@@ -2,4 +2,6 @@ I used python 3.14.5 for the venv. Check if other python versions will work too 
 
 Create venv ```python -m venv .venv``` and activate it.
 
-Run ```pip install -r requirements.txt``` to install the requirements inside your venv.
+Run ```pip install -r backend_requirements.txt``` to install the requirements inside your venv.
+
+Activation command for fish users: ```source backend/.venv/bin/activate.fish``` (run from main)
