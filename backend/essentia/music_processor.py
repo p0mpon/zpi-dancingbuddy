@@ -9,9 +9,7 @@ import matplotlib.pyplot as plt
 class MusicProcessor:
     """
     A class containing methods for music analysis.
-    Arrays returned contain hop frame values.
     """
-    #na razie do każdej metody są dodane antystereo guardy, jeszcze zobaczymy, czy jest sens ogarniania osobnej analizy dla stereo, czy wszystko będziemy robić w mono
 
     def __init__(self, sample_rate, frame_size, hop_size):
         self.sample_rate = sample_rate
@@ -26,7 +24,7 @@ class MusicProcessor:
         self.mfcc = es.MFCC()
         self.hpcp = es.HPCP()
 
-    def onset_detection(self, audio, method):
+    def _default_onset_detection(self, audio, method):
         """Detects song onsets using OnsetDetection algorithm."""
 
         if method not in ['hfc', 'complex', 'complex_phase', 'flux', 'melflux', 'mrms']:
@@ -47,9 +45,9 @@ class MusicProcessor:
             pool.add('odf', onset_detector(magnitude, phase))
 
         onsets_in_seconds = onsets(np.array([pool['odf']]), [1])
-        return onsets_in_seconds * (self.sample_rate / self.hop_size)
+        return onsets_in_seconds
 
-    def superflux_detection(self, audio):
+    def _superflux_detection(self, audio):
         """Detects song onsets using Superflux algorithm."""
         if audio.ndim > 1:
             audio = np.mean(audio, axis=1)
@@ -57,22 +55,31 @@ class MusicProcessor:
         superflux = es.SuperFluxExtractor(frameSize=self.frame_size, hopSize=self.hop_size, sampleRate=self.sample_rate)
         onsets_in_seconds, novelty_curve = superflux(audio)
 
-        return onsets_in_seconds * (self.sample_rate / self.hop_size)
+        return onsets_in_seconds
+
+    def onset_detection(self, audio, method):
+        """Detects song onsets using a chosen method."""
+        if method not in ['hfc', 'complex', 'complex_phase', 'flux', 'melflux', 'mrms', 'superflux']:
+            method = 'hfc'
+
+        if method in ['superflux']:
+            return self._superflux_detection(audio)
+        else:
+            return self._default_onset_detection(audio, method)
 
     def beat_detection(self, audio, method):
         """
         Computes the BPM value for a given track and provides an array of song beats.
         """
         if method not in ['multifeature', 'degara']:
-            raise ValueError(f"Invalid method '{method}'.")
+            method = 'multifeature'
 
         if audio.ndim > 1:
             audio = np.mean(audio, axis=1)
 
         rhythm_extractor = es.RhythmExtractor2013(method=method)
-        bpm, beats, beats_confidence, _, beats_intervals = rhythm_extractor(audio)
-        beats_frames = beats * (self.sample_rate / self.hop_size)
-        return bpm, beats_frames
+        bpm, beats, _, _, _ = rhythm_extractor(audio)
+        return bpm, beats
 
     def song_segmentation(self, audio):
         """
@@ -97,23 +104,29 @@ class MusicProcessor:
         features = np.hstack([np.array(mfccs), np.array(hpcps)])
 
         song_segmenter = es.SBic()
-        return song_segmenter(features.T)
+        segments = song_segmenter(features.T)
+
+        segments_in_seconds = segments * (self.hop_size / self.sample_rate)
+        return segments_in_seconds
 
     def play_and_visualize(self, audio, segments=None, beats=None, onsets=None):
         segments = segments if segments is not None else []
         beats = beats if beats is not None else []
         onsets = onsets if onsets is not None else []
 
+        if audio.ndim > 1:
+            audio = np.mean(audio, axis=1)
+
         samples = len(audio)
-        hop_frames = samples / self.hop_size
-        x_axis_frames = np.linspace(0, hop_frames, num=samples)
+        duration = samples / self.sample_rate
+        x_axis = np.linspace(0, duration, num=samples)
 
         step = max(1, len(audio) // 10000)
 
         fig, ax = plt.subplots(figsize=(14, 4))
 
         ax.plot(
-            x_axis_frames[::step],
+            x_axis[::step],
             audio[::step],
             color='skyblue',
             alpha=0.7,
@@ -155,32 +168,27 @@ class MusicProcessor:
             label='Playhead',
         )
 
-        frames_per_sec = self.sample_rate / self.hop_size
-        window_frames = 10 * frames_per_sec
-        duration_sec = samples / self.sample_rate
-
-        ax.set_xlim(0, window_frames)
+        window_sec = 10
+        ax.set_xlim(0, window_sec)
         ax.set_ylim(np.min(audio) * 1.1, np.max(audio) * 1.1)
-        ax.set_xlabel('Frames')
+        ax.set_xlabel('Time (seconds)')
         ax.set_ylabel('Amplitude')
-        ax.set_title('Scrolling Audio Visualizer (Frame-Based)')
         ax.legend(loc='upper right')
 
         start_time = time.time()
         sd.play(audio, self.sample_rate)
 
-        def update():
+        def update(frame):
             elapsed_seconds = time.time() - start_time
-            if elapsed_seconds <= duration_sec:
-                current_frame = elapsed_seconds * frames_per_sec
-                playhead.set_xdata([current_frame, current_frame])
+            if elapsed_seconds <= duration:
+                playhead.set_xdata([elapsed_seconds, elapsed_seconds])
 
-                left = max(0.0, current_frame - (window_frames * 0.3))
-                right = left + window_frames
+                left = max(0.0, elapsed_seconds - (window_sec * 0.3))
+                right = left + window_sec
 
-                if right > hop_frames:
-                    right = hop_frames
-                    left = max(0.0, right - window_frames)
+                if right > duration:
+                    right = duration
+                    left = max(0.0, right - window_sec)
 
                 ax.set_xlim(left, right)
 
@@ -195,6 +203,5 @@ class MusicProcessor:
         sd.stop()
 
     def write_sound_markers(self, audio, onsets):
-        onsets_in_seconds = np.array(onsets) * (self.hop_size / self.sample_rate)
-        marker = es.AudioOnsetsMarker(onsets=onsets_in_seconds, type='beep', sampleRate=self.sample_rate)
+        marker = es.AudioOnsetsMarker(onsets=onsets, type='beep', sampleRate=self.sample_rate)
         return marker(audio)
