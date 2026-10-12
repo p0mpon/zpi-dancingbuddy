@@ -1,3 +1,5 @@
+from typing import Tuple, Optional
+
 import essentia
 import essentia.standard as es
 import numpy as np
@@ -9,9 +11,10 @@ import matplotlib.pyplot as plt
 class MusicProcessor:
     """
     A class containing methods for music analysis.
+    Arrays returned contain values in seconds.
     """
 
-    def __init__(self, sample_rate, frame_size, hop_size):
+    def __init__(self, sample_rate: int, frame_size: int, hop_size: int) -> None:
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.hop_size = hop_size
@@ -24,7 +27,7 @@ class MusicProcessor:
         self.mfcc = es.MFCC()
         self.hpcp = es.HPCP()
 
-    def _default_onset_detection(self, audio, method):
+    def _default_onset_detection(self, audio: np.ndarray, method: str) -> np.ndarray:
         """Detects song onsets using OnsetDetection algorithm."""
 
         if method not in ['hfc', 'complex', 'complex_phase', 'flux', 'melflux', 'mrms']:
@@ -47,18 +50,21 @@ class MusicProcessor:
         onsets_in_seconds = onsets(np.array([pool['odf']]), [1])
         return onsets_in_seconds
 
-    def _superflux_detection(self, audio):
+    def _superflux_detection(self, audio: np.ndarray) -> np.ndarray:
         """Detects song onsets using Superflux algorithm."""
         if audio.ndim > 1:
             audio = np.mean(audio, axis=1)
 
-        superflux = es.SuperFluxExtractor(frameSize=self.frame_size, hopSize=self.hop_size, sampleRate=self.sample_rate)
-        onsets_in_seconds, novelty_curve = superflux(audio)
+        superflux = es.SuperFluxExtractor(sampleRate=self.sample_rate)
+        onsets_in_seconds = superflux(audio)
 
         return onsets_in_seconds
 
-    def onset_detection(self, audio, method):
-        """Detects song onsets using a chosen method."""
+    def onset_detection(self, audio: np.ndarray, method: str) -> np.ndarray:
+        """
+        Detects song onsets using a chosen method.
+        Available methods: hfc, complex, complex_phase, flux, melflux, mrms, superflux
+        """
         if method not in ['hfc', 'complex', 'complex_phase', 'flux', 'melflux', 'mrms', 'superflux']:
             method = 'hfc'
 
@@ -67,9 +73,10 @@ class MusicProcessor:
         else:
             return self._default_onset_detection(audio, method)
 
-    def beat_detection(self, audio, method):
+    def beat_detection(self, audio: np.ndarray, method: str) -> Tuple[float, np.ndarray]:
         """
         Computes the BPM value for a given track and provides an array of song beats.
+        Available methods: multifeature, degara
         """
         if method not in ['multifeature', 'degara']:
             method = 'multifeature'
@@ -81,7 +88,7 @@ class MusicProcessor:
         bpm, beats, _, _, _ = rhythm_extractor(audio)
         return bpm, beats
 
-    def song_segmentation(self, audio):
+    def song_segmentation(self, audio: np.ndarray) -> np.ndarray:
         """
         Divides a song into segments using the SBic algorithm.
         """
@@ -109,7 +116,9 @@ class MusicProcessor:
         segments_in_seconds = segments * (self.hop_size / self.sample_rate)
         return segments_in_seconds
 
-    def play_and_visualize(self, audio, segments=None, beats=None, onsets=None):
+    def play_and_visualize(self, audio: np.ndarray, segments: Optional[np.ndarray] = None,
+                                                    beats: Optional[np.ndarray] = None,
+                                                    onsets: Optional[np.ndarray] = None) -> None:
         segments = segments if segments is not None else []
         beats = beats if beats is not None else []
         onsets = onsets if onsets is not None else []
@@ -202,6 +211,6 @@ class MusicProcessor:
         plt.show()
         sd.stop()
 
-    def write_sound_markers(self, audio, onsets):
+    def write_sound_markers(self, audio: np.ndarray, onsets: np.ndarray) -> np.ndarray:
         marker = es.AudioOnsetsMarker(onsets=onsets, type='beep', sampleRate=self.sample_rate)
         return marker(audio)
