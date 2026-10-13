@@ -53,3 +53,14 @@ docker compose down -v     # stop AND wipe the database
 Possible (Python 3.14, `python -m venv .venv`, `pip install -r requirements.txt`), but you need a
 Postgres server and the variables from `.env` exported in your shell; Django doesn't read `.env` itself.
 Set `POSTGRES_HOST=localhost` and start only the DB with `docker compose up db`.
+
+### Essentia usage guide:
+
+insert music into essentia/insert_example_music
+
+load the track using ```MusicLoader.load_track()```
+
+analyse the track using MusicProcessor, available methods:
+* ```song_segmentation()```
+* ```beat_detection()```
+* ```onset_detection()```
