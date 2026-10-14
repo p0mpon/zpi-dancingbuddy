@@ -54,6 +54,18 @@ Possible (Python 3.14, `python -m venv .venv`, `pip install -r requirements.txt`
 Postgres server and the variables from `.env` exported in your shell; Django doesn't read `.env` itself.
 Set `POSTGRES_HOST=localhost` and start only the DB with `docker compose up db`.
 
+## How to run (if you're on Wi*dows)
+
+```powershell
+docker run --rm -it -p 8000:8000 `
+  -v "${PWD}\zpi_app:/app/zpi_app" `
+  -v "${PWD}\audio_analysis:/app/audio_analysis" `
+  dancingbuddy-backend
+```
+This will mount the local source folders as volumes and you will be able to reload the application without having to rebuild the image.
+
+Otherwise you can simply follow the instructions below:
+
 ### Essentia usage guide:
 
 insert music into essentia/insert_example_music

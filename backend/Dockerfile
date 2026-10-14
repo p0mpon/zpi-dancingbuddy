@@ -4,17 +4,17 @@ FROM python:3.14-slim
 # - don't write .pyc files
 # - print logs immediately (no buffering), so `docker compose logs` works in real time
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
-# System libraries needed by audio/video processing (Essentia, MediaPipe, ffmpeg).
-# libxcb1, libgl1, libglib2.0-0: required by the OpenCV build that MediaPipe
-# depends on — without them `import mediapipe` fails with "libxcb.so.1 not found".
+# System libraries needed by audio/video processing (Essentia, MediaPipe, ffmpeg)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
-        libsndfile1 \
-        libxcb1 \
         libgl1 \
         libglib2.0-0 \
+        libsndfile1 \
+        libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
