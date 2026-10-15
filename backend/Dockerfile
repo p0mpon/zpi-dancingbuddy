@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
         libsndfile1 \
+        libportaudio2 \
         libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 

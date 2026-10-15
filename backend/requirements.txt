@@ -19,3 +19,24 @@ celery[redis]==5.6.3
 
 # Video analysis
 mediapipe==1.1.0
+
+# categorize these later
+cffi==2.1.1
+contourpy==1.4.0
+cycler==0.12.1
+essentia==2.1b6.dev1438
+fonttools==4.66.1
+kiwisolver==1.5.1
+matplotlib==3.11.2
+numpy==2.5.3
+packaging==26.3
+pillow==12.3.0
+pycparser==3.0
+pyparsing==3.3.3
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.2
+PyQt6_sip==13.13.0
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
+six==1.17.0
+sounddevice==0.5.6
