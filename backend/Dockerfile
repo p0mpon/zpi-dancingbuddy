@@ -6,10 +6,15 @@ FROM python:3.14-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# System libraries needed by audio/video processing (Essentia, MediaPipe, ffmpeg)
+# System libraries needed by audio/video processing (Essentia, MediaPipe, ffmpeg).
+# libxcb1, libgl1, libglib2.0-0: required by the OpenCV build that MediaPipe
+# depends on — without them `import mediapipe` fails with "libxcb.so.1 not found".
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         libsndfile1 \
+        libxcb1 \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
