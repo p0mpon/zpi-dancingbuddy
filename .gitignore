@@ -44,3 +44,6 @@ yarn-error.log*
 *.swp
 .DS_Store
 Thumbs.db
+
+# Uploads written by the test suite (settings/test.py)
+/backend/test_media/

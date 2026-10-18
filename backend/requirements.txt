@@ -1,4 +1,21 @@
-asgiref==3.12.1
+# Direct dependencies, pinned. Versions verified together on python:3.14-slim.
+# Their own dependencies (numpy, opencv, kombu, ...) are resolved by pip.
+
+# Web
 Django==6.1.1
+asgiref==3.12.1
 sqlparse==0.6.0
 tzdata==2026.4
+djangorestframework==3.18.3
+# ASGI server for production: uvicorn zpi_app.asgi:application
+uvicorn==0.54.0
+
+# Database: PostgreSQL driver ([binary] bundles libpq) + connection pool
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+
+# Background jobs (video analysis). [redis] installs the Redis broker client.
+celery[redis]==5.6.3
+
+# Video analysis
+mediapipe==1.1.0

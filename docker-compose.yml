@@ -1,8 +1,32 @@
 services:
+  db:
+    image: postgres:18
+    env_file: ./backend/.env
+    volumes:
+      # Named volume: data survives `docker compose down` (but not `down -v`).
+      # Postgres 18+ images keep data under /var/lib/postgresql/<version>/.
+      - postgres_data:/var/lib/postgresql
+    ports:
+      # Exposed so you can connect with a GUI client (DBeaver, pgAdmin) from the host.
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   dancing-buddy-backend:
     build: ./backend
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    env_file: ./backend/.env
     volumes:
       - ./backend:/app
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        # Wait until pg_isready succeeds, not just until the container starts.
+        condition: service_healthy
+
+volumes:
+  postgres_data:
