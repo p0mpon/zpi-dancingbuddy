@@ -76,14 +76,23 @@ def analyze_dance_video(
 
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         current_target_frame = 0
+        current_native_frame = 0
 
-        while current_target_frame < total_target_frames:
-            target_time_ms = (current_target_frame / target_fps) * 1000.0
-            cap.set(cv2.CAP_PROP_POS_MSEC, target_time_ms)
+        frame_stride = max(1, round(native_fps / target_fps))
 
+        while True:
             ret, frame_img = cap.read()
             if not ret:
                 break
+
+            if current_native_frame % frame_stride != 0:
+                current_native_frame += 1
+                continue
+
+            h, w = frame_img.shape[:2]
+            if w > 854:
+                scale = 854 / w
+                frame_img = cv2.resize(frame_img, (int(w * scale), int(h * scale)))
 
             rgb_frame = cv2.cvtColor(frame_img, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
@@ -153,8 +162,10 @@ def analyze_dance_video(
             frames.append(frame_obj)
 
             current_target_frame += 1
+            current_native_frame += 1
+
             if current_target_frame % 10 == 0:
-                progress_pct = (current_target_frame / total_target_frames) * 100.0
+                progress_pct = min(100.0, (current_native_frame / total_native_frames) * 100.0)
                 progress_callback(current_target_frame, total_target_frames, progress_pct)
 
     cap.release()
@@ -195,6 +206,7 @@ if __name__ == "__main__":
     import time
 
     os.environ["QT_QPA_FONTDIR"] = "/usr/share/fonts"
+
     test_video_path = "test_video.mp4"
     target_fps = 15.0
 
@@ -202,7 +214,7 @@ if __name__ == "__main__":
         print(f"Error: Test video '{test_video_path}' not found in the current directory.")
         sys.exit(1)
 
-    print(f"Starting initial analysis for '{test_video_path}'...")
+    print(f"Starting offline analysis phase for '{test_video_path}'...")
     start_time = time.time()
 
     try:
