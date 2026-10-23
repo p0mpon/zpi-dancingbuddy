@@ -36,3 +36,12 @@
     transform: rotate(360deg);
   }
 }
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fs-7 { font-size: 0.9rem; }
+.fs-8 { font-size: 0.8rem; }
