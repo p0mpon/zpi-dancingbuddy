@@ -16,9 +16,12 @@ router.register('videos', VideoViewSet, basename='video')
 
 # @TODO static files and media files in django - django-storages
 
+from .views import analysis_test
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     # Login/logout pages for DRF's browsable API (handy for poking at /api/ in a browser).
     path('api-auth/', include('rest_framework.urls')),
+    path('analysis-test', analysis_test, name='analysis-test'),
 ]
