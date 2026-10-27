@@ -1,9 +1,9 @@
 import json
+import numpy as np
 from pathlib import Path
 
-import numpy as np
-
 from full_analysis.choreo_encoder import AudioData, ChoreoEncoder
+from full_analysis.frame_processor import FrameProcessor
 from zpi_app.zpi_app.video_frame_model import Frame, Joint
 
 
@@ -46,6 +46,13 @@ def skibidi():
         video_json = json.load(f)
     video_data = video_json_to_frames(video_json)
 
+    # Process the video data
+    processor = FrameProcessor()
+    processed_video_frames, frame_interval = processor._preprocess_frames(video_data)
+
     # Choreo encoding
     encoder = ChoreoEncoder()
-    return encoder.encode_to_choreo(audio_data=audio, video_data=video_data)
+    return encoder.encode_to_choreo(
+        audio_data=audio, 
+        processed_frames=processed_video_frames, 
+        frame_interval=frame_interval)
