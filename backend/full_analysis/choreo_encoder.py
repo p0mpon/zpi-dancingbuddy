@@ -1,210 +1,56 @@
+import numpy as np
 from typing import List
 
-import numpy as np
-from pydantic import BaseModel
-
+from full_analysis.choreo_data_model import AudioContext, ChoreoData, ChoreoFrame, ChoreoMetadata, DynamicWeights, GlobalPosition, JointData
 from zpi_app.zpi_app.video_frame_model import Frame, Joint
 
 
 AudioData = tuple[np.ndarray, tuple[float, np.ndarray]]
 
-
-class ChoreoMetadata(BaseModel):
-    """
-    Metadata for the choreo data, including the song id, fps and duration in seconds.
-    """
-    song_id: int
-    fps: int
-    duration_sec: float
-
-
-class DynamicWeights(BaseModel):
-    """
-    Weights representing the importance of angle or velocity + acceleration of a joint.
-    Angle weight is higher for poses that are held for some time,
-    while kinematic weight is higher for fast movements.
-    """
-    angle_weight: float
-    kinematic_weight: float
-
-
-class AudioContext(BaseModel):
-    """
-    Data about the audio context of a frame, including whether the frame is on a beat or an onset.
-    """
-    is_beat: bool
-    is_onset: bool
-
-
-class GlobalPosition(BaseModel):
-    """
-    Represents the global position of the dancer, including:
-    - hip_y: the height of the hip in the global coordinate system
-    - body_rotation_deg: the rotation of the body in degrees
-    """
-    hip_y: float
-    body_rotation_deg: float
-
-
-class JointData(BaseModel):
-    """
-    Represents the data for a single joint, including:
-    - angle: the angle of the joint in degrees
-    - velocity_deg_per_sec: the velocity of the joint in degrees per second
-    - acceleration_deg_per_sec2: the acceleration of the joint in degrees per second squared
-    - visibility: the visibility of the joint
-    - dynamic_weights: the dynamic weights for the joint
-    """
-    angle: float
-    velocity_deg_per_sec: float
-    acceleration_deg_per_sec2: float
-    visibility: float
-    dynamic_weights: DynamicWeights
-
-
-class ChoreoFrame(BaseModel):
-    """
-    Represents a single frame of the choreo, incuding:
-    - frame_id: the index of the frame in the original video
-    - timestamp_sec: the timestamp of the frame in seconds
-    - frame_weight: the weight of the frame based on audio and hold detection
-    - audio_context: the audio context of the frame (beat and onset)
-    - global_position: the global position of the dancer (hip height and body rotation)
-    - joints: the data for each joint
-    """
-    frame_id: int
-    timestamp_sec: float
-    frame_weight: float
-    audio_context: AudioContext
-    global_position: GlobalPosition
-    joints: dict[str, JointData]
-
-
-class ChoreoData(BaseModel):
-    """
-    Full choreo data object. Includes metadata and a list of frames with all the weights.
-    """
-    metadata: ChoreoMetadata
-    frames: list[ChoreoFrame]
-
-
 class ChoreoEncoder:
     """
     Encodes video and audio data into a proper choreo format.
     """
-    # --- CONSTANTS ---
-    # threshold for joint visibility, below which the joint is considered not visible
-    VISIBILITY_THRESHOLD = 0.5
-    # alpha value for EMA
-    EMA_ALPHA = 0.3
-    # thresholds for detecting holds, slow and fast movements
-    STATIC_DELTA_THRESHOLD_DEG = 5.0
-    SLOW_DELTA_THRESHOLD_DEG = 15.0
-    FAST_DELTA_THRESHOLD_DEG = 30.0
-    HOLD_DURATION_SEC = 0.5
-    SLOW_VELOCITY_THRESHOLD_DEG_PER_SEC = 30.0
-    FAST_VELOCITY_THRESHOLD_DEG_PER_SEC = 120.0
-    FAST_ACCELERATION_THRESHOLD_DEG_PER_SEC2 = 300.0
-    # tolerance for matching beat and onset times to frame timestamps
-    AUDIO_MATCH_TOLERANCE_SEC = 0.1
-    # multipliers for frame weights based on audio and hold detection
-    AUDIO_WEIGHT_MULTIPLIER = 1.5
-    HOLD_WEIGHT_MULTIPLIER = 1.2
-    # default fps
-    DEFAULT_FPS = 30
-
-    @staticmethod
-    def _is_visible(joint: Joint) -> bool:
-        """
-        Check if a joint is visible vased on a threshold.
-        If the joint is None, the visibility is set to 0.
-        """
-        visibility = joint.visibility if joint is not None else None
-        return (
-            visibility is not None
-            and visibility >= ChoreoEncoder.VISIBILITY_THRESHOLD
-        )
-
-    @staticmethod
-    def _number(value: object, default: float = 0.0) -> float:
-        """
-        Makes a float out of a value, or returns a default if the value is None or not finite.
-        """
-        return float(value) if value is not None and np.isfinite(value) else default
-
-    def _preprocess_frames(
-        self, video_data: List[Frame]
-    ) -> tuple[list[dict[str, object]], float]:
-        """
-        Smoothes the angles of the joints from video data and calculates the velocity and acceleration of each joint.
-        Returns a list of processed frames and the frame interval in seconds (median of all deltas).
-        """
-        if not video_data:
-            return [], float(1 / self.DEFAULT_FPS)
-
-        timestamps = np.asarray([self._number(frame.timestamp) for frame in video_data])
-        # time differences between timestamps
-        deltas = np.diff(timestamps)
-        positive_deltas = deltas[deltas > 0]
-        frame_interval = (
-            float(np.median(positive_deltas))
-            if positive_deltas.size
-            else 1 / self.DEFAULT_FPS
-        )
-
-        # set up previous angles and velocities for EMA smoothing
-        previous_angles: dict[str, float] = {}
-        previous_velocities: dict[str, float] = {}
-        processed: list[dict[str, object]] = []
-
-        for index, frame in enumerate(video_data):
-            dt = (
-                float(timestamps[index] - timestamps[index - 1])
-                if index > 0 and timestamps[index] > timestamps[index - 1]
-                else frame_interval
-            )
-
-            joints: dict[str, dict[str, float]] = {}
-            for name, joint in frame.joints.items():
-                visibility = float(np.clip(self._number(getattr(joint, "visibility", 0.0)), 0.0, 1.0))
-                # set default values if the joint is not visible or angle is None
-                if not self._is_visible(joint) or getattr(joint, "angle", None) is None:
-                    previous_angles.pop(name, None)
-                    previous_velocities.pop(name, None)
-                    joints[name] = {
-                        "angle": 0.0,
-                        "velocity": 0.0,
-                        "acceleration": 0.0,
-                        "visibility": visibility,
-                    }
-                    continue
-
-                raw_angle = self._number(joint.angle)
-                # apply EMA smoothing for angles
-                smoothed_angle = (
-                    raw_angle
-                    if name not in previous_angles
-                    else self.EMA_ALPHA * raw_angle
-                    + (1 - self.EMA_ALPHA) * previous_angles[name]
-                )
-
-                # calculate velocity and acceleration
-                velocity = (smoothed_angle - previous_angles.get(name, smoothed_angle)) / dt
-                acceleration = (velocity - previous_velocities.get(name, velocity)) / dt
-
-                previous_angles[name] = smoothed_angle
-                previous_velocities[name] = velocity
-
-                joints[name] = {
-                    "angle": smoothed_angle,
-                    "velocity": velocity,
-                    "acceleration": acceleration,
-                    "visibility": visibility,
-                }
-
-            processed.append({"frame": frame, "timestamp": timestamps[index], "joints": joints})
-
-        return processed, frame_interval
+    def __init__(self,
+                 static_delta_threshold_deg: float = 5.0,
+                 slow_delta_threshold_deg: float = 15.0,
+                 fast_delta_threshold_deg: float = 30.0,
+                 hold_duration_sec: float = 0.5,
+                 slow_velocity_threshold_deg_per_sec: float = 30.0,
+                 fast_velocity_threshold_deg_per_sec: float = 120.0,
+                 fast_acceleration_threshold_deg_per_sec2: float = 300.0,
+                 audio_match_tolerance_sec: float = 0.1,
+                 audio_weight_multiplier: float = 1.5,
+                 hold_weight_multiplier: float = 1.2,
+                 static_angle_weight_multiplier: float = 0.9,
+                 static_kinematic_weight_multiplier: float = 0.1,
+                 slow_angle_weight_multiplier: float = 0.5,
+                 slow_kinematic_weight_multiplier: float = 0.5,
+                 fast_angle_weight_multiplier: float = 0.2,
+                 fast_kinematic_weight_multiplier: float = 0.8,
+                 default_fps: int = 30):
+        # thresholds for detecting holds, slow and fast movements
+        self.STATIC_DELTA_THRESHOLD_DEG = static_delta_threshold_deg
+        self.SLOW_DELTA_THRESHOLD_DEG = slow_delta_threshold_deg
+        self.FAST_DELTA_THRESHOLD_DEG = fast_delta_threshold_deg
+        self.HOLD_DURATION_SEC = hold_duration_sec
+        self.SLOW_VELOCITY_THRESHOLD_DEG_PER_SEC = slow_velocity_threshold_deg_per_sec
+        self.FAST_VELOCITY_THRESHOLD_DEG_PER_SEC = fast_velocity_threshold_deg_per_sec
+        self.FAST_ACCELERATION_THRESHOLD_DEG_PER_SEC2 = fast_acceleration_threshold_deg_per_sec2
+        # tolerance for matching beat and onset times to frame timestamps
+        self.AUDIO_MATCH_TOLERANCE_SEC = audio_match_tolerance_sec
+        # multipliers for frame weights based on audio and hold detection
+        self.AUDIO_WEIGHT_MULTIPLIER = audio_weight_multiplier
+        self.HOLD_WEIGHT_MULTIPLIER = hold_weight_multiplier
+        # multipiers for dynamic weights based on speed of movement
+        self.STATIC_ANGLE_WEIGHT_MULTIPLIER = static_angle_weight_multiplier
+        self.STATIC_KINEMATIC_WEIGHT_MULTIPLIER = static_kinematic_weight_multiplier
+        self.SLOW_ANGLE_WEIGHT_MULTIPLIER = slow_angle_weight_multiplier
+        self.SLOW_KINEMATIC_WEIGHT_MULTIPLIER = slow_kinematic_weight_multiplier
+        self.FAST_ANGLE_WEIGHT_MULTIPLIER = fast_angle_weight_multiplier
+        self.FAST_KINEMATIC_WEIGHT_MULTIPLIER = fast_kinematic_weight_multiplier
+        # default fps
+        self.DEFAULT_FPS = default_fps
 
     def _select_frames(
         self, processed: list[dict[str, object]]
@@ -288,7 +134,8 @@ class ChoreoEncoder:
     def encode_to_choreo(
         self,
         audio_data: AudioData,
-        video_data: List[Frame],
+        processed_frames: list[dict[str, object]],
+        frame_interval: float,
     ) -> ChoreoData:
         """
         Encodes the given audio and video data into a ChoreoData object.
@@ -296,8 +143,7 @@ class ChoreoEncoder:
         """
         onset_times, (_, beat_times) = audio_data
 
-        processed, frame_interval = self._preprocess_frames(video_data)
-        selected = self._select_frames(processed)
+        selected = self._select_frames(processed_frames)
 
         fps = round(1 / frame_interval) if frame_interval > 0 else self.DEFAULT_FPS
 
@@ -319,11 +165,11 @@ class ChoreoEncoder:
             for name, values in data["joints"].items():
                 speed = abs(values["velocity"])
                 if speed < self.SLOW_VELOCITY_THRESHOLD_DEG_PER_SEC:
-                    angle_weight, kinematic_weight = 0.9, 0.1
+                    angle_weight, kinematic_weight = self.STATIC_ANGLE_WEIGHT_MULTIPLIER, self.STATIC_KINEMATIC_WEIGHT_MULTIPLIER
                 elif speed < self.FAST_VELOCITY_THRESHOLD_DEG_PER_SEC:
-                    angle_weight, kinematic_weight = 0.5, 0.5
+                    angle_weight, kinematic_weight = self.SLOW_ANGLE_WEIGHT_MULTIPLIER, self.SLOW_KINEMATIC_WEIGHT_MULTIPLIER
                 else:
-                    angle_weight, kinematic_weight = 0.2, 0.8
+                    angle_weight, kinematic_weight = self.FAST_ANGLE_WEIGHT_MULTIPLIER, self.FAST_KINEMATIC_WEIGHT_MULTIPLIER
 
                 visibility = values["visibility"]
 
@@ -345,8 +191,8 @@ class ChoreoEncoder:
                     frame_weight=frame_weight,
                     audio_context=audio_context,
                     global_position=GlobalPosition(
-                        hip_y=self._number(frame.hip_height),
-                        body_rotation_deg=self._number(frame.hip_rotation),
+                        hip_y=frame.hip_height,
+                        body_rotation_deg=frame.hip_rotation,
                     ),
                     joints=joints,
                 )
@@ -355,7 +201,7 @@ class ChoreoEncoder:
         duration = (
             float(np.max(beat_times))
             if np.asarray(beat_times).size
-            else (float(processed[-1]["timestamp"]) if processed else 0.0)
+            else (float(processed_frames[-1]["timestamp"]) if processed_frames else 0.0)
         )
 
         return ChoreoData(
