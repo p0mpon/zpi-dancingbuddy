@@ -61,8 +61,7 @@ class VideoViewSet(viewsets.ViewSet):
         return Response(VideoSerializer(video).data)
 
     def destroy(self, request, pk=None):
-        self.get_video(pk)
-        # TODO: services.delete_video(); nothing is deleted yet
+        services.delete_video(video=self.get_video(pk))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True)

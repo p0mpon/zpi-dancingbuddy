@@ -180,8 +180,23 @@ class VideoApiTests(APITestCase):
         self.others_video.refresh_from_db()
         self.assertEqual(self.others_video.title, 'Not yours')
 
-    def test_delete(self):
-        self.assertEqual(self.client.delete(self.url(self.analysed)).status_code, status.HTTP_204_NO_CONTENT)
+    def test_delete_removes_row_and_file(self):
+        file_path = Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name)
+        self.assertTrue(file_path.is_file())
+        # TestCase never commits, so on_commit callbacks (the file delete) would not run otherwise.
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.delete(self.url(self.analysed))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Video.objects.filter(pk=self.analysed.pk).exists())
+        self.assertFalse(file_path.exists())
+
+    def test_delete_other_users_video_is_404(self):
+        file_path = Path(settings.MEDIA_ROOT, self.others_video.path_to_resource.name)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.delete(self.url(self.others_video))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Video.objects.filter(pk=self.others_video.pk).exists())
+        self.assertTrue(file_path.is_file())
 
     # ==== OTHER ACTIONS
 

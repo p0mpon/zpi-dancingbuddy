@@ -6,6 +6,8 @@ Plain functions with keyword-only arguments, so a call reads like a sentence:
 upload_video(owner=user, title='Salsa', file=f). They know nothing about HTTP.
 """
 
+from django.db import transaction
+
 from .models import Video
 
 
@@ -32,3 +34,15 @@ def update_video(*, video, **fields):
     # 'updated_at' must be listed: with update_fields, auto_now is only written for listed fields.
     video.save(update_fields=[*fields, 'updated_at'])
     return video
+
+
+def delete_video(*, video):
+    """Delete the row, then the file, but only after the transaction commits."""
+    # If the DB delete fails (or the transaction is rolled back), the file must still exist,
+    # so the file is removed in an on_commit callback, not right away.
+    # Known limitation: deleting a user CASCADE-deletes their rows but leaves their files.
+    with transaction.atomic():
+        storage = video.path_to_resource.storage
+        name = video.path_to_resource.name
+        video.delete()
+        transaction.on_commit(lambda: storage.delete(name))
