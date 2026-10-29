@@ -2,14 +2,13 @@
 Videos API. Routes (registered in zpi_app/urls.py):
 
     GET     /api/videos/                        list
-    POST    /api/videos/                        create (multipart upload)
+    POST    /api/videos/                        create (multipart upload, queues the analysis)
     GET     /api/videos/{id}/                   retrieve
-    PATCH   /api/videos/{id}/                   partial_update (rename)
+    PATCH   /api/videos/{id}/                   partial_update (rename; a new file re-runs the analysis)
     DELETE  /api/videos/{id}/                   destroy
     GET     /api/videos/{id}/stream/            stream
     GET     /api/videos/{id}/thumbnail/         thumbnail
-    POST    /api/videos/{id}/analysis/          analysis (re-run)
-    GET     /api/videos/{id}/analysis/frames/   analysis_frames
+    GET     /api/videos/{id}/analysis/          analysis (the whole json_analysis)
 
 Views only deal with HTTP: find the video (owner-only), validate the request with a
 serializer, call videos/services.py for any write, return a response.
@@ -22,7 +21,7 @@ from rest_framework.response import Response
 
 from . import services
 from .models import Video
-from .serializers import FramesQuerySerializer, VideoSerializer, VideoUploadSerializer
+from .serializers import VideoSerializer, VideoUploadSerializer
 
 
 def not_implemented():
@@ -76,30 +75,12 @@ class VideoViewSet(viewsets.ViewSet):
         # TODO: needs a thumbnail generated during analysis (not in the VIDEO table yet).
         return not_implemented()
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True)
     def analysis(self, request, pk=None):
-        self.get_video(pk)
-        # TODO: queue Celery task (separate ticket)
-        return Response(status=status.HTTP_202_ACCEPTED)
-
-    @action(detail=True, url_path='analysis/frames', url_name='analysis-frames')
-    def analysis_frames(self, request, pk=None):
         video = self.get_video(pk)
-        query = FramesQuerySerializer(data=request.query_params)
-        query.is_valid(raise_exception=True)
+        # The frontend polls retrieve for analysis_status and asks for this once it's 'done'.
         if not video.is_analysed:
             return Response({'detail': 'Video is not analysed yet.'}, status=status.HTTP_409_CONFLICT)
-
-        # TODO: the json_analysis format isn't decided yet (list of Frame dicts as below,
-        # or DAN-35's ChoreoData); this slicing assumes a list of Frame dicts.
-        frames = video.json_analysis
-        start = query.validated_data['start']
-        end = query.validated_data.get('end', float('inf'))
-        joints = query.validated_data.get('joints')
-        frames = [frame for frame in frames if start <= frame['timestamp'] <= end]
-        if joints:
-            frames = [
-                {**frame, 'joints': {name: data for name, data in frame['joints'].items() if name in joints}}
-                for frame in frames
-            ]
-        return Response(frames)
+        # TODO: the json_analysis format isn't decided yet (list of Frame vs DAN-35's ChoreoData);
+        # it's returned as stored.
+        return Response(video.json_analysis)

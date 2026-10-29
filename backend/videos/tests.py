@@ -205,19 +205,21 @@ class VideoApiTests(APITestCase):
             response = self.client.get(self.url(self.analysed, suffix))
             self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
 
-    def test_rerun_analysis(self):
-        response = self.client.post(self.url(self.analysed, 'analysis/'))
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+    # ==== ANALYSIS
 
-    def test_frames_sliced_by_time_and_joints(self):
-        response = self.client.get(
-            self.url(self.analysed, 'analysis/frames/'),
-            {'start': 1.5, 'end': 2.0, 'joints': 'left_knee,right_knee'},
-        )
+    def test_analysis_returns_whole_json(self):
+        response = self.client.get(self.url(self.analysed, 'analysis/'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 16)  # frames 45..60 at 30 fps
-        self.assertEqual(set(response.data[0]['joints']), {'left_knee', 'right_knee'})
+        self.assertEqual(response.json(), self.analysed.json_analysis)
 
-    def test_frames_need_analysis(self):
-        response = self.client.get(self.url(self.pending, 'analysis/frames/'))
+    def test_analysis_needs_analysed_video(self):
+        response = self.client.get(self.url(self.pending, 'analysis/'))
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
+    def test_analysis_other_users_video_is_404(self):
+        response = self.client.get(self.url(self.others_video, 'analysis/'))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_analysis_cannot_be_started_by_hand(self):
+        response = self.client.post(self.url(self.analysed, 'analysis/'))
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)

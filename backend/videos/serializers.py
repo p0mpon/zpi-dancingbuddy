@@ -23,7 +23,7 @@ class VideoSerializer(serializers.ModelSerializer):
     """A video as returned by the API. PATCH may change title and description.
 
     Not exposed: owner (always the logged-in user), path_to_resource (served by
-    /stream/) and json_analysis (too large; served in slices by /analysis/frames/).
+    /stream/) and json_analysis (too large for the list; served by /analysis/).
     """
 
     class Meta:
@@ -45,14 +45,3 @@ class VideoUploadSerializer(serializers.Serializer):
         if file.size > MAX_VIDEO_SIZE_BYTES:
             raise serializers.ValidationError(f'File is too large (max {MAX_VIDEO_SIZE_MB} MB).')
         return file
-
-
-class FramesQuerySerializer(serializers.Serializer):
-    """Query params of GET /api/videos/{id}/analysis/frames/?start=1.5&end=4&joints=left_knee,right_knee"""
-
-    start = serializers.FloatField(min_value=0, default=0)
-    end = serializers.FloatField(min_value=0, required=False)
-    joints = serializers.CharField(required=False)
-
-    def validate_joints(self, value):
-        return [name.strip() for name in value.split(',') if name.strip()]
