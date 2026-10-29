@@ -20,7 +20,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
-from . import stub_data
+from . import services, stub_data
 from .serializers import FramesQuerySerializer, VideoSerializer, VideoUploadSerializer
 
 
@@ -46,8 +46,8 @@ class VideoViewSet(viewsets.ViewSet):
     def create(self, request):
         upload = VideoUploadSerializer(data=request.data)
         upload.is_valid(raise_exception=True)
-        # TODO: save the file, Video.objects.create(user=request.user, ...), queue the analysis
-        video = {'id': 3, 'title': upload.validated_data['title'], 'file_size': float(upload.validated_data['file'].size)}
+        # owner comes from the session, never from the form (the serializer has no owner field).
+        video = services.upload_video(owner=request.user, **upload.validated_data)
         return Response(VideoSerializer(video).data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
