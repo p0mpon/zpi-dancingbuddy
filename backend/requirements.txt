@@ -32,6 +32,8 @@ numpy==2.5.3
 packaging==26.3
 pillow==12.3.0
 pycparser==3.0
+pydantic==2.14.1
+pydantic_core==2.50.1
 pyparsing==3.3.3
 PyQt6==6.11.0
 PyQt6-Qt6==6.11.2

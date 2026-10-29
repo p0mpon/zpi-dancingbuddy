@@ -17,8 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from .views import analysis_test
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     # Login/logout pages for DRF's browsable API (handy for poking at /api/ in a browser).
     path('api-auth/', include('rest_framework.urls')),
+    path('analysis-test', analysis_test, name='analysis-test'),
 ]
