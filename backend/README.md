@@ -39,6 +39,20 @@ Production is served over **ASGI** with uvicorn (`uvicorn zpi_app.asgi:applicati
 docker compose exec dancing-buddy-backend python manage.py check --deploy --settings=zpi_app.settings.prod
 ```
 
+## Background jobs (Celery)
+
+Video analysis runs in the `celery-worker` container, with Redis (`redis`) as the queue.
+`docker compose up` starts both. Uploading a video (or replacing its file via PATCH) queues
+`videos.tasks.analyse_video`; the worker sets `analysis_status` to `processing`, then `done` or `failed`.
+
+```
+docker compose logs -f celery-worker     # watch tasks run
+docker compose restart celery-worker     # after changing task code (the worker doesn't auto-reload)
+```
+
+The analysis itself isn't connected yet: see the TODO in `videos/tasks.py` (`run_analysis`).
+Tests don't need Redis: `settings/test.py` runs tasks inline (`CELERY_TASK_ALWAYS_EAGER`).
+
 ## Common commands
 
 ```
