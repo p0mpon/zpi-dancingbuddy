@@ -1,36 +1,49 @@
 """
 Request/response shapes for the videos API, matching the VIDEO table in db/diagram/v1.md.
 
-Plain Serializers because the Video model doesn't exist yet; once it does,
-VideoSerializer becomes a ModelSerializer with the same fields.
+VideoSerializer is a ModelSerializer: its fields map 1:1 to Video columns, so DRF
+builds them (types, max_length, ...) from the model. VideoUploadSerializer is a plain
+Serializer because the upload doesn't match the model: the request sends `file`, the
+model stores `path_to_resource`, and `file_size` is computed, not sent.
+
+Serializers only validate and convert; saving happens in videos/services.py.
 """
 
 from rest_framework import serializers
 
+from .models import Video
+
 ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm']
 
+MAX_VIDEO_SIZE_MB = 500
+MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
 
-class VideoSerializer(serializers.Serializer):
-    """A video as returned by the API. Only `title` can be changed (PATCH).
 
-    Not exposed: user_id (always the logged-in user), path_to_resource (served by
-    /stream/) and big_ass_json (too large; served in slices by /analysis/frames/).
+class VideoSerializer(serializers.ModelSerializer):
+    """A video as returned by the API. PATCH may change title and description.
+
+    Not exposed: owner (always the logged-in user), path_to_resource (served by
+    /stream/) and json_analysis (too large; served in slices by /analysis/frames/).
     """
 
-    id = serializers.IntegerField(read_only=True)
-    title = serializers.CharField(max_length=200)
-    file_size = serializers.FloatField(read_only=True)
+    class Meta:
+        model = Video
+        fields = ['id', 'title', 'description', 'file_size', 'analysis_status', 'created_at']
+        read_only_fields = ['file_size', 'analysis_status']
 
 
 class VideoUploadSerializer(serializers.Serializer):
     """Body of POST /api/videos/ (multipart/form-data)."""
 
     title = serializers.CharField(max_length=200)
+    description = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
     file = serializers.FileField()
 
     def validate_file(self, file):
         if file.name.rsplit('.', 1)[-1].lower() not in ALLOWED_VIDEO_EXTENSIONS:
             raise serializers.ValidationError(f"Allowed file types: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}.")
+        if file.size > MAX_VIDEO_SIZE_BYTES:
+            raise serializers.ValidationError(f'File is too large (max {MAX_VIDEO_SIZE_MB} MB).')
         return file
 
 
