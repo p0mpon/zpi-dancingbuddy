@@ -7,11 +7,12 @@ from unittest import mock
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from .models import AnalysisStatus, Video
+from .tasks import analyse_video
 
 # Uploaded files go to a throw-away folder, removed after the test class runs.
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
@@ -268,3 +269,78 @@ class VideoApiTests(APITestCase):
     def test_analysis_cannot_be_started_by_hand(self):
         response = self.client.post(self.url(self.analysed, 'analysis/'))
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class AnalyseVideoTaskTests(TestCase):
+    """The Celery task, called directly (in tests CELERY_TASK_ALWAYS_EAGER runs .delay() inline too)."""
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
+
+    def setUp(self):
+        self.dancer = get_user_model().objects.create_user(username='dancer', password='pass')
+        self.video = Video.objects.create(
+            owner=self.dancer, title='Salsa', path_to_resource=video_file(), file_size=16.0,
+        )
+
+    def test_success_saves_json_and_done(self):
+        frames = fake_frames(seconds=1)
+        with mock.patch('videos.tasks.run_analysis', return_value=frames) as run_analysis:
+            analyse_video(self.video.pk)
+        run_analysis.assert_called_once_with(self.video.path_to_resource.path)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.analysis_status, AnalysisStatus.DONE)
+        self.assertEqual(self.video.json_analysis, frames)
+
+    def test_status_is_processing_while_running(self):
+        def check_status(file_path):
+            self.assertEqual(Video.objects.get(pk=self.video.pk).analysis_status, AnalysisStatus.PROCESSING)
+            return []
+
+        with mock.patch('videos.tasks.run_analysis', side_effect=check_status):
+            analyse_video(self.video.pk)
+
+    def test_error_marks_failed(self):
+        with mock.patch('videos.tasks.run_analysis', side_effect=RuntimeError('boom')):
+            with self.assertLogs('videos.tasks', level='ERROR'):
+                analyse_video(self.video.pk)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.analysis_status, AnalysisStatus.FAILED)
+        self.assertIsNone(self.video.json_analysis)
+
+    def test_not_connected_yet_marks_failed(self):
+        with self.assertLogs('videos.tasks', level='ERROR'):
+            analyse_video(self.video.pk)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.analysis_status, AnalysisStatus.FAILED)
+
+    def test_result_dropped_if_file_replaced_meanwhile(self):
+        def replace_file(file_path):
+            # What a PATCH with a new file does while the worker is busy.
+            Video.objects.filter(pk=self.video.pk).update(
+                path_to_resource='videos/new.mp4', analysis_status=AnalysisStatus.PENDING,
+            )
+            return fake_frames(seconds=1)
+
+        with mock.patch('videos.tasks.run_analysis', side_effect=replace_file):
+            analyse_video(self.video.pk)
+        self.video.refresh_from_db()
+        self.assertEqual(self.video.analysis_status, AnalysisStatus.PENDING)
+        self.assertIsNone(self.video.json_analysis)
+
+    def test_deleted_video_is_skipped(self):
+        with mock.patch('videos.tasks.run_analysis') as run_analysis:
+            analyse_video(999999)
+        run_analysis.assert_not_called()
+
+    def test_upload_runs_the_task(self):
+        """Whole chain: POST -> on_commit -> start_analysis -> analyse_video.delay (eager) -> done."""
+        self.client.force_login(self.dancer)
+        with mock.patch('videos.tasks.run_analysis', return_value=fake_frames(seconds=1)):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post('/api/videos/', {'title': 'New', 'file': video_file()})
+        video = Video.objects.get(pk=response.json()['id'])
+        self.assertEqual(video.analysis_status, AnalysisStatus.DONE)

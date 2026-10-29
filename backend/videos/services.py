@@ -10,18 +10,36 @@ start_analysis() after the transaction commits -> a worker fills json_analysis.
 """
 
 from django.db import transaction
+from django.utils import timezone
 
 from .models import AnalysisStatus, Video
 
 
 def start_analysis(*, video):
-    """Queue the analysis of the video's file.
+    """Queue the analysis of the video's file (videos/tasks.py, run by the Celery worker).
 
     Always called through transaction.on_commit, so the worker only starts once
     the row (and the file) is really saved.
     """
-    # TODO: queue the Celery task (separate ticket), e.g. analyse_video.delay(video.pk).
-    # The task sets 'processing', writes json_analysis, then sets 'done' or 'failed'.
+    # Imported here, not at the top: tasks.py imports this module.
+    from .tasks import analyse_video
+    analyse_video.delay(video.pk)
+
+
+def set_analysis_result(*, video_id, file_name, status, json_analysis=None):
+    """Write analysis_status (and json_analysis) for the analysis of file_name.
+
+    Only writes if the video still exists and still has that file. Returns False
+    if it doesn't (deleted, or a new file was uploaded via PATCH meanwhile).
+    """
+    # One UPDATE ... WHERE id = .. AND path_to_resource = .., so the check and the write
+    # can't be split by a PATCH in between. .update() skips auto_now, so updated_at is set here.
+    updated = Video.objects.filter(pk=video_id, path_to_resource=file_name).update(
+        analysis_status=status,
+        json_analysis=json_analysis,
+        updated_at=timezone.now(),
+    )
+    return updated == 1
 
 
 def upload_video(*, owner, title, file, description=''):
@@ -37,7 +55,9 @@ def upload_video(*, owner, title, file, description=''):
             path_to_resource=file,
             file_size=float(file.size),
         )
-        transaction.on_commit(lambda: start_analysis(video=video))
+        # robust=True: if Redis is down, log the error instead of failing the request;
+        # the video is already saved and stays 'pending'.
+        transaction.on_commit(lambda: start_analysis(video=video), robust=True)
     return video
 
 
@@ -68,7 +88,7 @@ def update_video(*, video, file=None, **fields):
         video.save(update_fields=update_fields)
         if file is not None:
             transaction.on_commit(lambda: old_storage.delete(old_name))
-            transaction.on_commit(lambda: start_analysis(video=video))
+            transaction.on_commit(lambda: start_analysis(video=video), robust=True)
     return video
 
 
