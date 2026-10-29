@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'rest_framework',
     # Local
     'accounts',
+    'videos',
 ]
 
 MIDDLEWARE = [
@@ -211,3 +212,16 @@ MAILERS = {
         },
     },
 }
+
+
+# Celery (background jobs: video analysis)
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html
+
+# Redis is the queue between Django and the worker. "redis" is the compose service name.
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", "redis://redis:6379/0")
+# Tasks write their results to the database (Video.json_analysis), so Celery
+# doesn't need to store return values anywhere.
+CELERY_TASK_IGNORE_RESULT = True
+# An analysis takes long: a worker process takes one task at a time instead of
+# reserving several, so waiting tasks can go to another free worker.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1

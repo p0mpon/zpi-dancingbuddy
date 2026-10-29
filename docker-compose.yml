@@ -15,6 +15,15 @@ services:
       timeout: 5s
       retries: 10
 
+  # Queue between Django and the Celery worker. Not exposed to the host.
+  redis:
+    image: redis:8
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   dancing-buddy-backend:
     build: ./backend
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
@@ -26,6 +35,24 @@ services:
     depends_on:
       db:
         # Wait until pg_isready succeeds, not just until the container starts.
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Runs the video analysis (videos/tasks.py). Same image and code as the backend.
+  # It doesn't auto-reload: after changing task code, `docker compose restart celery-worker`.
+  celery-worker:
+    build: ./backend
+    # concurrency=1: one analysis at a time; pose detection is heavy on CPU and memory.
+    command: celery -A zpi_app worker --loglevel=info --concurrency=1
+    env_file: ./backend/.env
+    volumes:
+      # Same folder as the backend, so the worker can read the uploaded files in media/.
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
