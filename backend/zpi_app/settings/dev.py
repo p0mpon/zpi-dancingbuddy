@@ -1,4 +1,4 @@
-"""Local development settings (default for manage.py and asgi.py)."""
+"""Local development settings (default for manage.py and wsgi.py)."""
 
 from .base import *  # noqa: F401,F403
 from .base import env, env_list
