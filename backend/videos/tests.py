@@ -117,6 +117,13 @@ class VideoApiTests(APITestCase):
         self.assertTrue(video.path_to_resource.name.startswith(f'videos/user_{self.dancer.pk}/'))
         self.assertTrue(Path(settings.MEDIA_ROOT, video.path_to_resource.name).is_file())
 
+    def test_upload_queues_analysis_after_commit(self):
+        with mock.patch('videos.services.start_analysis') as start_analysis:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.upload(title='New', file=video_file())
+        video = Video.objects.get(pk=response.data['id'])
+        start_analysis.assert_called_once_with(video=video)
+
     def test_upload_ignores_owner_in_form(self):
         response = self.upload(title='New', file=video_file(), owner=self.other.pk)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -173,6 +180,44 @@ class VideoApiTests(APITestCase):
         response = self.client.patch(self.url(self.analysed), {})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['title'], 'Salsa basic step')
+
+    def test_rename_does_not_rerun_analysis(self):
+        with mock.patch('videos.services.start_analysis') as start_analysis:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.patch(self.url(self.analysed), {'title': 'Renamed'})
+        start_analysis.assert_not_called()
+        self.analysed.refresh_from_db()
+        self.assertEqual(self.analysed.analysis_status, AnalysisStatus.DONE)
+
+    def test_replace_file_resets_and_reruns_analysis(self):
+        old_path = Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name)
+        with mock.patch('videos.services.start_analysis') as start_analysis:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.patch(
+                    self.url(self.analysed), {'file': video_file('new.webm', b'new bytes!')}, format='multipart',
+                )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('file', response.data)  # write-only
+        self.assertEqual(response.data['analysis_status'], 'pending')
+
+        self.analysed.refresh_from_db()
+        self.assertEqual(self.analysed.file_size, len(b'new bytes!'))
+        self.assertIsNone(self.analysed.json_analysis)
+        self.assertTrue(self.analysed.path_to_resource.name.endswith('.webm'))
+        self.assertTrue(Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name).is_file())
+        self.assertFalse(old_path.exists())
+        start_analysis.assert_called_once_with(video=mock.ANY)
+
+    def test_replace_file_rejects_non_video(self):
+        response = self.client.patch(
+            self.url(self.analysed),
+            {'file': SimpleUploadedFile('notes.txt', b'hello', content_type='text/plain')},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('file', response.data)
+        self.analysed.refresh_from_db()
+        self.assertEqual(self.analysed.analysis_status, AnalysisStatus.DONE)
 
     def test_rename_other_users_video_is_404(self):
         response = self.client.patch(self.url(self.others_video), {'title': 'Mine now'})
