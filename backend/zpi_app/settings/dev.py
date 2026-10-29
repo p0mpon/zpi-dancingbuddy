@@ -1,7 +1,7 @@
 """Local development settings (default for manage.py and wsgi.py)."""
 
 from .base import *  # noqa: F401,F403
-from .base import env, env_list
+from .base import REST_FRAMEWORK, env, env_list
 
 DEBUG = True
 
@@ -15,4 +15,14 @@ MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
+}
+
+# Dev only: Basic Auth lets Postman send username/password on each request,
+# without logging in and copying the CSRF token. Never enable this in prod.
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
 }
