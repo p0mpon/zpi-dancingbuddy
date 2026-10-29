@@ -1,3 +1,4 @@
+import math
 import shutil
 import tempfile
 from pathlib import Path
@@ -15,6 +16,23 @@ from .models import AnalysisStatus, Video
 # Uploaded files go to a throw-away folder, removed after the test class runs.
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
+JOINTS = ['left_knee', 'right_knee', 'left_hip', 'right_hip']
+
+
+def fake_frames(seconds, fps=30):
+    """A json_analysis value: a list of Frame dicts (zpi_app/zpi_app/video_frame_model.py)."""
+    return [
+        {
+            'frame_id': frame_id,
+            'timestamp': round(frame_id / fps, 4),
+            'joints': {
+                name: {'angle': round(90 + 45 * math.sin(frame_id / fps * 2 + i), 2), 'visibility': 0.95}
+                for i, name in enumerate(JOINTS)
+            },
+        }
+        for frame_id in range(seconds * fps)
+    ]
+
 
 def video_file(name='dance.mp4', content=b'fake video bytes'):
     return SimpleUploadedFile(name, content, content_type='video/mp4')
@@ -28,8 +46,23 @@ class VideoApiTests(APITestCase):
         shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
-        self.dancer = get_user_model().objects.create_user(username='dancer', password='pass')
+        User = get_user_model()
+        self.dancer = User.objects.create_user(username='dancer', password='pass')
+        self.other = User.objects.create_user(username='other', password='pass')
+        self.analysed = Video.objects.create(
+            owner=self.dancer, title='Salsa basic step', path_to_resource=video_file('salsa.mp4'),
+            file_size=16.0, analysis_status=AnalysisStatus.DONE, json_analysis=fake_frames(seconds=10),
+        )
+        self.pending = Video.objects.create(
+            owner=self.dancer, title='Bachata turn', path_to_resource=video_file('bachata.mp4'), file_size=16.0,
+        )
+        self.others_video = Video.objects.create(
+            owner=self.other, title='Not yours', path_to_resource=video_file('tango.mp4'), file_size=16.0,
+        )
         self.client.force_authenticate(self.dancer)
+
+    def url(self, video, suffix=''):
+        return f'/api/videos/{video.pk}/{suffix}'
 
     def upload(self, **data):
         return self.client.post('/api/videos/', data, format='multipart')
@@ -38,10 +71,35 @@ class VideoApiTests(APITestCase):
         self.client.force_authenticate(None)
         self.assertEqual(self.client.get('/api/videos/').status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_list_hides_internal_fields(self):
+    def test_put_not_allowed(self):
+        response = self.client.put(self.url(self.analysed), {'title': 'X'})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    # ==== LIST / RETRIEVE
+
+    def test_list_only_own_videos_newest_first(self):
         response = self.client.get('/api/videos/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(set(response.data[0]), {'id', 'title', 'file_size'})
+        self.assertEqual([video['id'] for video in response.data], [self.pending.pk, self.analysed.pk])
+
+    def test_list_fields(self):
+        response = self.client.get('/api/videos/')
+        self.assertEqual(
+            set(response.data[0]),
+            {'id', 'title', 'description', 'file_size', 'analysis_status', 'created_at'},
+        )
+
+    def test_retrieve_own(self):
+        response = self.client.get(self.url(self.analysed))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['title'], 'Salsa basic step')
+        self.assertEqual(response.data['analysis_status'], 'done')
+
+    def test_retrieve_other_users_video_is_404(self):
+        self.assertEqual(self.client.get(self.url(self.others_video)).status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_retrieve_missing_is_404(self):
+        self.assertEqual(self.client.get('/api/videos/999999/').status_code, status.HTTP_404_NOT_FOUND)
 
     # ==== UPLOAD
 
@@ -60,8 +118,7 @@ class VideoApiTests(APITestCase):
         self.assertTrue(Path(settings.MEDIA_ROOT, video.path_to_resource.name).is_file())
 
     def test_upload_ignores_owner_in_form(self):
-        other = get_user_model().objects.create_user(username='other', password='pass')
-        response = self.upload(title='New', file=video_file(), owner=other.pk)
+        response = self.upload(title='New', file=video_file(), owner=self.other.pk)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Video.objects.get(pk=response.data['id']).owner, self.dancer)
 
@@ -79,39 +136,40 @@ class VideoApiTests(APITestCase):
     def test_upload_rejects_too_large_file(self):
         # Shrink the limit to 4 bytes instead of building a 500 MB file.
         with mock.patch('videos.serializers.MAX_VIDEO_SIZE_BYTES', 4):
-            response = self.upload(title='New', file=video_file(content=b'12345'))
+            response = self.upload(title='Too big', file=video_file(content=b'12345'))
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('file', response.data)
-        self.assertFalse(Video.objects.exists())
+        self.assertFalse(Video.objects.filter(title='Too big').exists())
 
     def test_upload_requires_title(self):
         response = self.upload(file=video_file())
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('title', response.data)
 
-    def test_retrieve_and_404(self):
-        self.assertEqual(self.client.get('/api/videos/1/').status_code, status.HTTP_200_OK)
-        self.assertEqual(self.client.get('/api/videos/999/').status_code, status.HTTP_404_NOT_FOUND)
+    # ==== RENAME / DELETE
 
     def test_rename_ignores_read_only_fields(self):
-        response = self.client.patch('/api/videos/1/', {'title': 'Renamed', 'file_size': 1})
+        response = self.client.patch(self.url(self.analysed), {'title': 'Renamed', 'file_size': 1})
         self.assertEqual(response.data['title'], 'Renamed')
         self.assertNotEqual(response.data['file_size'], 1)
 
     def test_delete(self):
-        self.assertEqual(self.client.delete('/api/videos/1/').status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.client.delete(self.url(self.analysed)).status_code, status.HTTP_204_NO_CONTENT)
+
+    # ==== OTHER ACTIONS
 
     def test_stream_and_thumbnail_not_implemented(self):
-        for path in ('stream', 'thumbnail'):
-            response = self.client.get(f'/api/videos/1/{path}/')
+        for suffix in ('stream/', 'thumbnail/'):
+            response = self.client.get(self.url(self.analysed, suffix))
             self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
 
     def test_rerun_analysis(self):
-        self.assertEqual(self.client.post('/api/videos/1/analysis/').status_code, status.HTTP_202_ACCEPTED)
+        response = self.client.post(self.url(self.analysed, 'analysis/'))
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
     def test_frames_sliced_by_time_and_joints(self):
         response = self.client.get(
-            '/api/videos/1/analysis/frames/',
+            self.url(self.analysed, 'analysis/frames/'),
             {'start': 1.5, 'end': 2.0, 'joints': 'left_knee,right_knee'},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -119,5 +177,5 @@ class VideoApiTests(APITestCase):
         self.assertEqual(set(response.data[0]['joints']), {'left_knee', 'right_knee'})
 
     def test_frames_need_analysis(self):
-        response = self.client.get('/api/videos/2/analysis/frames/')
+        response = self.client.get(self.url(self.pending, 'analysis/frames/'))
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
