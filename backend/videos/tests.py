@@ -148,10 +148,37 @@ class VideoApiTests(APITestCase):
 
     # ==== RENAME / DELETE
 
-    def test_rename_ignores_read_only_fields(self):
-        response = self.client.patch(self.url(self.analysed), {'title': 'Renamed', 'file_size': 1})
+    def test_rename_saves_title_and_description(self):
+        old_updated_at = self.analysed.updated_at
+        response = self.client.patch(self.url(self.analysed), {'title': 'Renamed', 'description': 'Slow'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['title'], 'Renamed')
-        self.assertNotEqual(response.data['file_size'], 1)
+        self.assertEqual(response.data['description'], 'Slow')
+
+        self.analysed.refresh_from_db()
+        self.assertEqual(self.analysed.title, 'Renamed')
+        self.assertEqual(self.analysed.description, 'Slow')
+        self.assertGreater(self.analysed.updated_at, old_updated_at)
+
+    def test_rename_ignores_read_only_fields(self):
+        response = self.client.patch(
+            self.url(self.pending), {'title': 'Renamed', 'file_size': 1, 'analysis_status': 'done'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.pending.refresh_from_db()
+        self.assertEqual(self.pending.file_size, 16.0)
+        self.assertEqual(self.pending.analysis_status, AnalysisStatus.PENDING)
+
+    def test_rename_empty_body_changes_nothing(self):
+        response = self.client.patch(self.url(self.analysed), {})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['title'], 'Salsa basic step')
+
+    def test_rename_other_users_video_is_404(self):
+        response = self.client.patch(self.url(self.others_video), {'title': 'Mine now'})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.others_video.refresh_from_db()
+        self.assertEqual(self.others_video.title, 'Not yours')
 
     def test_delete(self):
         self.assertEqual(self.client.delete(self.url(self.analysed)).status_code, status.HTTP_204_NO_CONTENT)

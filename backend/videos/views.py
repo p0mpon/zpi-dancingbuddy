@@ -56,8 +56,9 @@ class VideoViewSet(viewsets.ViewSet):
         video = self.get_video(pk)
         serializer = VideoSerializer(video, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        # TODO: services.update_video(); nothing is saved yet
-        return Response({**VideoSerializer(video).data, **serializer.validated_data})
+        # validated_data holds only writable fields that were sent (file_size etc. are dropped).
+        video = services.update_video(video=video, **serializer.validated_data)
+        return Response(VideoSerializer(video).data)
 
     def destroy(self, request, pk=None):
         self.get_video(pk)
