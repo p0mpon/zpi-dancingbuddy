@@ -22,7 +22,7 @@ JOINTS = ['left_knee', 'right_knee', 'left_hip', 'right_hip']
 
 
 def fake_frames(seconds, fps=30):
-    """A json_analysis value: a list of Frame dicts (zpi_app/zpi_app/video_frame_model.py)."""
+    """A json_analysis value: a list of Frame dicts (video_analysis/video_frame_model.py)."""
     return [
         {
             'frame_id': frame_id,
