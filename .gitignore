@@ -11,6 +11,8 @@ dist/
 .venv/
 venv/
 env/
+uv.lock
+pyproject.toml
 
 # Testing / tooling caches
 .pytest_cache/
