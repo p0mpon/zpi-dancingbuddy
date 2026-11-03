@@ -13,7 +13,6 @@ class Frame(BaseModel):
     frame_id: int
     timestamp: float
     joints: Dict[str, Joint]
-    landmarks_2d: Optional[List[Tuple[float, float, float]]] = None
 
     hip_rotation: Optional[float] = None
     hip_height: Optional[float] = None
