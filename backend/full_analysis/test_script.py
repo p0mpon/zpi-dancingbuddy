@@ -1,4 +1,5 @@
 import json
+from random import random
 import numpy as np
 from pathlib import Path
 
@@ -34,6 +35,29 @@ def video_json_to_frames(video_json: list[dict]) -> list[Frame]:
     ]
 
 
+def processed_video_to_frames(
+    processed_frames: list[dict[str, object]],
+) -> list[Frame]:
+    return [
+        Frame(
+            frame_id=processed_frame["frame"].frame_id,
+            timestamp=float(processed_frame["timestamp"]), # you can add some sort of delay here to see how the final score changes :D
+            joints={
+                name: Joint(
+                    angle=values["angle"],
+                    angular_velocity=values["velocity"],
+                    angular_acceleration=values["acceleration"],
+                    visibility=values["visibility"],
+                )
+                for name, values in processed_frame["joints"].items()
+            },
+            hip_rotation=processed_frame["frame"].hip_rotation,
+            hip_height=processed_frame["frame"].hip_height,
+        )
+        for processed_frame in processed_frames
+    ]
+
+
 def skibidi():
     data_dir = Path(__file__).resolve().parent
 
@@ -62,7 +86,10 @@ def test_comparator():
     data_dir = Path(__file__).resolve().parent
     with (data_dir / "sample_video" / "test_video3.json").open() as f:
         video_json = json.load(f)
-    compare_choreo = video_json_to_frames(video_json)
+    video_data = video_json_to_frames(video_json)
+    processor = FrameProcessor()
+    processed_video_frames, _ = processor._preprocess_frames(video_data)
+    compare_choreo = processed_video_to_frames(processed_video_frames)
 
     base_choreo = skibidi()
 
