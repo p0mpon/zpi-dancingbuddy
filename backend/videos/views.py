@@ -14,6 +14,8 @@ Views only deal with HTTP: find the video (owner-only), validate the request wit
 serializer, call videos/services.py for any write, return a response.
 """
 
+import mimetypes
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -22,6 +24,7 @@ from rest_framework.response import Response
 from . import services
 from .models import Video
 from .serializers import VideoSerializer, VideoUploadSerializer
+from .streaming import range_file_response
 
 
 def not_implemented():
@@ -65,9 +68,22 @@ class VideoViewSet(viewsets.ViewSet):
 
     @action(detail=True)
     def stream(self, request, pk=None):
-        self.get_video(pk)
-        # TODO: FileResponse of path_to_resource, with HTTP Range support so the player can seek.
-        return not_implemented()
+        """The video file, for <video src=...>, with Range support so the player can seek.
+
+        ?download=1 saves it as '<title>.<ext>' instead.
+        """
+        video = self.get_video(pk)
+        file_name = video.path_to_resource.name
+        content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
+        extension = file_name.rsplit('.', 1)[-1]
+        # A plain Django response is fine here: DRF passes any HttpResponse through unchanged.
+        return range_file_response(
+            request,
+            video.path_to_resource,
+            content_type,
+            as_attachment=request.query_params.get('download') == '1',
+            filename=f'{video.title}.{extension}',
+        )
 
     @action(detail=True)
     def thumbnail(self, request, pk=None):

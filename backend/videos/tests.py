@@ -7,11 +7,12 @@ from unittest import mock
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from .models import AnalysisStatus, Video
+from .streaming import RangeNotSatisfiable, parse_range_header
 from .tasks import analyse_video
 
 # Uploaded files go to a throw-away folder, removed after the test class runs.
@@ -244,12 +245,77 @@ class VideoApiTests(APITestCase):
         self.assertTrue(Video.objects.filter(pk=self.others_video.pk).exists())
         self.assertTrue(file_path.is_file())
 
+    # ==== STREAM
+
+    def stream(self, video, headers=None, **params):
+        """GET /stream/ and read the whole streamed body."""
+        response = self.client.get(self.url(video, 'stream/'), params, headers=headers)
+        # Reading to the end also closes the response (and the file). Don't call
+        # response.close() again: that would close the test's DB connection.
+        body = b''.join(response.streaming_content) if response.streaming else response.content
+        return response, body
+
+    def test_stream_whole_file(self):
+        response, body = self.stream(self.analysed)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'video/mp4')
+        self.assertEqual(response['Content-Length'], str(len(b'fake video bytes')))
+        self.assertEqual(body, b'fake video bytes')
+        # inline = play in the browser; the filename is only a suggestion for "Save as".
+        self.assertEqual(response['Content-Disposition'], 'inline; filename="Salsa basic step.mp4"')
+        self.assertEqual(response['Accept-Ranges'], 'bytes')
+
+    def test_stream_range_start_end(self):
+        response, body = self.stream(self.analysed, headers={'Range': 'bytes=0-3'})
+        self.assertEqual(response.status_code, status.HTTP_206_PARTIAL_CONTENT)
+        self.assertEqual(body, b'fake')
+        self.assertEqual(response['Content-Range'], 'bytes 0-3/16')
+        self.assertEqual(response['Content-Length'], '4')
+        self.assertEqual(response['Content-Type'], 'video/mp4')
+        self.assertEqual(response['Accept-Ranges'], 'bytes')
+
+    def test_stream_range_open_end(self):
+        response, body = self.stream(self.analysed, headers={'Range': 'bytes=4-'})
+        self.assertEqual(response.status_code, status.HTTP_206_PARTIAL_CONTENT)
+        self.assertEqual(body, b' video bytes')
+        self.assertEqual(response['Content-Range'], 'bytes 4-15/16')
+
+    def test_stream_range_suffix(self):
+        response, body = self.stream(self.analysed, headers={'Range': 'bytes=-3'})
+        self.assertEqual(response.status_code, status.HTTP_206_PARTIAL_CONTENT)
+        self.assertEqual(body, b'tes')
+        self.assertEqual(response['Content-Range'], 'bytes 13-15/16')
+
+    def test_stream_range_out_of_file_is_416(self):
+        response, _ = self.stream(self.analysed, headers={'Range': 'bytes=16-'})
+        self.assertEqual(response.status_code, status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE)
+        self.assertEqual(response['Content-Range'], 'bytes */16')
+
+    def test_stream_malformed_range_sends_whole_file(self):
+        response, body = self.stream(self.analysed, headers={'Range': 'bytes=abc'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(body, b'fake video bytes')
+
+    def test_stream_download_with_range_keeps_attachment(self):
+        response, body = self.stream(self.analysed, headers={'Range': 'bytes=0-3'}, download='1')
+        self.assertEqual(response.status_code, status.HTTP_206_PARTIAL_CONTENT)
+        self.assertEqual(response['Content-Disposition'], 'attachment; filename="Salsa basic step.mp4"')
+
+    def test_stream_download(self):
+        response, body = self.stream(self.analysed, download='1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Disposition'], 'attachment; filename="Salsa basic step.mp4"')
+        self.assertEqual(body, b'fake video bytes')
+
+    def test_stream_other_users_video_is_404(self):
+        response = self.client.get(self.url(self.others_video, 'stream/'))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     # ==== OTHER ACTIONS
 
-    def test_stream_and_thumbnail_not_implemented(self):
-        for suffix in ('stream/', 'thumbnail/'):
-            response = self.client.get(self.url(self.analysed, suffix))
-            self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
+    def test_thumbnail_not_implemented(self):
+        response = self.client.get(self.url(self.analysed, 'thumbnail/'))
+        self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
 
     # ==== ANALYSIS
 
@@ -344,3 +410,37 @@ class AnalyseVideoTaskTests(TestCase):
                 response = self.client.post('/api/videos/', {'title': 'New', 'file': video_file()})
         video = Video.objects.get(pk=response.json()['id'])
         self.assertEqual(video.analysis_status, AnalysisStatus.DONE)
+
+
+class ParseRangeHeaderTests(SimpleTestCase):
+    """The Range parser alone, without HTTP. File size is 1000 bytes (0..999)."""
+
+    def test_start_end(self):
+        self.assertEqual(parse_range_header('bytes=0-99', 1000), (0, 99))
+
+    def test_open_end(self):
+        self.assertEqual(parse_range_header('bytes=500-', 1000), (500, 999))
+
+    def test_suffix(self):
+        self.assertEqual(parse_range_header('bytes=-100', 1000), (900, 999))
+
+    def test_suffix_longer_than_file(self):
+        self.assertEqual(parse_range_header('bytes=-5000', 1000), (0, 999))
+
+    def test_end_clamped_to_file(self):
+        self.assertEqual(parse_range_header('bytes=900-5000', 1000), (900, 999))
+
+    def test_spaces_allowed(self):
+        self.assertEqual(parse_range_header('bytes= 0 - 9', 1000), (0, 9))
+
+    def test_ignored_headers(self):
+        for header in [None, '', 'bytes=', 'bytes=-', 'items=0-9', 'bytes=abc', 'bytes=5', 'bytes=9-5',
+                       'bytes=0-1,5-9', 'bytes=1.5-2']:
+            with self.subTest(header=header):
+                self.assertIsNone(parse_range_header(header, 1000))
+
+    def test_not_satisfiable(self):
+        for header, size in [('bytes=1000-', 1000), ('bytes=5000-6000', 1000), ('bytes=-0', 1000), ('bytes=-5', 0)]:
+            with self.subTest(header=header, size=size):
+                with self.assertRaises(RangeNotSatisfiable):
+                    parse_range_header(header, size)

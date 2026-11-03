@@ -39,6 +39,10 @@ Production is served over **ASGI** with uvicorn (`uvicorn zpi_app.asgi:applicati
 docker compose exec dancing-buddy-backend python manage.py check --deploy --settings=zpi_app.settings.prod
 ```
 
+## Videos API
+
+Endpoints, architecture and data-flow diagrams: [`videos/README.md`](videos/README.md).
+
 ## Background jobs (Celery)
 
 Video analysis runs in the `celery-worker` container, with Redis (`redis`) as the queue.

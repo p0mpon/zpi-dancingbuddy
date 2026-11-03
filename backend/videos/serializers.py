@@ -20,12 +20,22 @@ MAX_VIDEO_SIZE_MB = 500
 MAX_VIDEO_SIZE_BYTES = MAX_VIDEO_SIZE_MB * 1024 * 1024
 
 
-def validate_video_file(file):
-    """Shared by upload (POST) and file replacement (PATCH)."""
+def validate_filename(file):
+    """The file name must end with an allowed video extension."""
     if file.name.rsplit('.', 1)[-1].lower() not in ALLOWED_VIDEO_EXTENSIONS:
         raise serializers.ValidationError(f"Allowed file types: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}.")
+
+
+def validate_file_size(file):
+    """The file must not be larger than MAX_VIDEO_SIZE_MB."""
     if file.size > MAX_VIDEO_SIZE_BYTES:
         raise serializers.ValidationError(f'File is too large (max {MAX_VIDEO_SIZE_MB} MB).')
+
+
+def validate_video_file(file):
+    """Shared by upload (POST) and file replacement (PATCH)."""
+    validate_filename(file)
+    validate_file_size(file)
     return file
 
 
