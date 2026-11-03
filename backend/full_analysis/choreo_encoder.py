@@ -1,11 +1,13 @@
 import numpy as np
 
-from full_analysis.choreo_data_model import AudioContext, ChoreoData, ChoreoFrame, ChoreoMetadata, DynamicWeights, GlobalPosition, JointData
-from video_analysis.video_frame_model import Frame, Joint
+from full_analysis.choreo_data_model import AudioContext, ChoreoFrame, DynamicWeights, GlobalPosition, JointData
+from video_analysis.video_frame_model import Frame
 
 # type alias for audio data
 AudioData = tuple[np.ndarray, tuple[float, np.ndarray]]
 
+# threshold for joint visibility
+JOINT_VISIBILITY_THRESHOLD = 0.5
 # thresholds for detecting holds, slow and fast movements
 STATIC_DELTA_THRESHOLD_DEG = 5.0
 SLOW_DELTA_THRESHOLD_DEG = 15.0
@@ -26,8 +28,6 @@ SLOW_ANGLE_WEIGHT_MULTIPLIER = 0.5
 SLOW_KINEMATIC_WEIGHT_MULTIPLIER = 0.5
 FAST_ANGLE_WEIGHT_MULTIPLIER = 0.2
 FAST_KINEMATIC_WEIGHT_MULTIPLIER = 0.8
-# default fps
-DEFAULT_FPS = 30
 
 
 def _select_frames(video_frames: list[Frame]) -> list[tuple[Frame, bool]]:
@@ -44,18 +44,18 @@ def _select_frames(video_frames: list[Frame]) -> list[tuple[Frame, bool]]:
 
     # list of tuples with frames and whether they are held poses
     selected: list[tuple[Frame, bool]] = [(video_frames[0], False)]
-    baseline = video_frames[0]
+    previous_selected_frame = video_frames[0]
 
-    for current in video_frames[1:]:
-        baseline_joints = baseline.joints
-        current_joints = current.joints
-        names = set(baseline_joints) | set(current_joints)
+    for frame in video_frames[1:]:
+        previous_joints = previous_selected_frame.joints
+        current_joints = frame.joints
+        names = set(previous_joints) | set(current_joints)
 
         max_delta = max(
             (
                 abs(
                     (current_joints[name].angle or 0.0)
-                    - (baseline_joints[name].angle or 0.0)
+                    - (previous_joints[name].angle or 0.0)
                 )
                 for name in names
             ),
@@ -63,15 +63,15 @@ def _select_frames(video_frames: list[Frame]) -> list[tuple[Frame, bool]]:
         )
         
         max_velocity = max(
-            (abs(joint.angular_velocity) for joint in current_joints.values()),
+            (abs(joint.angular_velocity or 0.0) for joint in current_joints.values()),
             default=0.0,
         )
         max_acceleration = max(
-            (abs(joint.angular_acceleration) for joint in current_joints.values()),
+            (abs(joint.angular_acceleration or 0.0) for joint in current_joints.values()),
             default=0.0,
         )
         held_long_enough = (
-            current.timestamp - baseline.timestamp > HOLD_DURATION_SEC
+            frame.timestamp - previous_selected_frame.timestamp > HOLD_DURATION_SEC
         )
 
         is_hold = held_long_enough and max_delta < STATIC_DELTA_THRESHOLD_DEG
@@ -88,8 +88,8 @@ def _select_frames(video_frames: list[Frame]) -> list[tuple[Frame, bool]]:
         )
 
         if is_hold or is_slow_move or is_fast_move:
-            selected.append((current, is_hold))
-            baseline = current
+            selected.append((frame, is_hold))
+            previous_selected_frame = frame
 
     if selected[-1][0] is not video_frames[-1]:
         selected.append((video_frames[-1], False))
@@ -118,21 +118,18 @@ def _audio_context(timestamp: float,
     )
 
 def encode_to_choreo(audio_data: AudioData,
-                     video_frames: list[Frame]) -> ChoreoData:
+                     video_frames: list[Frame]) -> list[ChoreoFrame]:
     """
-    Encodes the given audio and video data into a ChoreoData object.
-    The video data (angles) are smoothed using the EMA method.
+    Encodes the given audio and video data into a list of ChoreoFrame objects.
     Args:
         audio_data (AudioData): A tuple containing onset times and beat times.
-        video_frames (list[Frame]): List of processed video frames.
+        video_frames (list[Frame]): List of smoothed ad processed video frames.
     Returns:
-        ChoreoData: An object containing the encoded choreo data (selected keyframes) with all the weights.
+        list[ChoreoFrame]: A list of encoded choreo frames with all the weights.
     """
     onset_times, (_, beat_times) = audio_data
 
     selected = _select_frames(video_frames)
-
-    fps = DEFAULT_FPS
 
     output_frames: list[ChoreoFrame] = []
 
@@ -149,7 +146,11 @@ def encode_to_choreo(audio_data: AudioData,
 
         joints: dict[str, JointData] = {}
         for name, joint_data in frame.joints.items():
-            speed = abs(joint_data.angular_velocity)
+            visibility = joint_data.visibility
+            if visibility < JOINT_VISIBILITY_THRESHOLD:
+                continue
+            
+            speed = abs(joint_data.angular_velocity or 0.0)
             if speed < SLOW_VELOCITY_THRESHOLD_DEG_PER_SEC:
                 angle_weight, kinematic_weight = STATIC_ANGLE_WEIGHT_MULTIPLIER, STATIC_KINEMATIC_WEIGHT_MULTIPLIER
             elif speed < FAST_VELOCITY_THRESHOLD_DEG_PER_SEC:
@@ -157,12 +158,10 @@ def encode_to_choreo(audio_data: AudioData,
             else:
                 angle_weight, kinematic_weight = FAST_ANGLE_WEIGHT_MULTIPLIER, FAST_KINEMATIC_WEIGHT_MULTIPLIER
 
-            visibility = joint_data.visibility
-
             joints[name] = JointData(
-                angle=joint_data.angle,
-                velocity_deg_per_sec=joint_data.angular_velocity,
-                acceleration_deg_per_sec2=joint_data.angular_acceleration,
+                angle=joint_data.angle or 0.0,
+                velocity_deg_per_sec=joint_data.angular_velocity or 0.0,
+                acceleration_deg_per_sec2=joint_data.angular_acceleration or 0.0,
                 visibility=visibility,
                 dynamic_weights=DynamicWeights(
                     angle_weight=angle_weight,
@@ -177,20 +176,11 @@ def encode_to_choreo(audio_data: AudioData,
                 frame_weight=frame_weight,
                 audio_context=audio_context,
                 global_position=GlobalPosition(
-                    hip_y=frame.hip_height,
-                    body_rotation_deg=frame.hip_rotation,
+                    hip_y=frame.hip_height or 0.0,
+                    body_rotation_deg=frame.hip_rotation or 0.0,
                 ),
                 joints=joints,
             )
         )
 
-    duration = (
-        float(np.max(beat_times))
-        if np.asarray(beat_times).size
-        else (float(video_frames[-1].timestamp) if video_frames else 0.0)
-    )
-
-    return ChoreoData(
-        metadata=ChoreoMetadata(fps=fps, duration_sec=duration),
-        frames=output_frames,
-    )
+    return output_frames

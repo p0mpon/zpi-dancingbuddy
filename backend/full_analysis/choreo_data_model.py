@@ -1,14 +1,6 @@
 from pydantic import BaseModel
 
 
-class ChoreoMetadata(BaseModel):
-    """
-    Metadata for the choreo data, including the fps and duration in seconds.
-    """
-    fps: int
-    duration_sec: float
-
-
 class DynamicWeights(BaseModel):
     """
     Weights representing the importance of angle or velocity + acceleration of a joint.
@@ -69,11 +61,3 @@ class ChoreoFrame(BaseModel):
     audio_context: AudioContext
     global_position: GlobalPosition
     joints: dict[str, JointData]
-
-
-class ChoreoData(BaseModel):
-    """
-    Full choreo data object. Includes metadata and a list of frames with all the weights.
-    """
-    metadata: ChoreoMetadata
-    frames: list[ChoreoFrame]
