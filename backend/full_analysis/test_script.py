@@ -2,6 +2,7 @@ import json
 import numpy as np
 from pathlib import Path
 
+from full_analysis.choreo_comparator import compare_choreos
 from full_analysis.choreo_encoder import AudioData, ChoreoEncoder
 from full_analysis.frame_processor import FrameProcessor
 from zpi_app.zpi_app.video_frame_model import Frame, Joint
@@ -56,3 +57,15 @@ def skibidi():
         audio_data=audio, 
         processed_frames=processed_video_frames, 
         frame_interval=frame_interval)
+
+def test_comparator():
+    data_dir = Path(__file__).resolve().parent
+    with (data_dir / "sample_video" / "test_video3.json").open() as f:
+        video_json = json.load(f)
+    compare_choreo = video_json_to_frames(video_json)
+
+    base_choreo = skibidi()
+
+    scored_frames, general_score = compare_choreos(base_choreo, compare_choreo)
+
+    return scored_frames, general_score
