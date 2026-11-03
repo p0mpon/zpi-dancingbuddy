@@ -3,9 +3,8 @@ from pydantic import BaseModel
 
 class ChoreoMetadata(BaseModel):
     """
-    Metadata for the choreo data, including the song id, fps and duration in seconds.
+    Metadata for the choreo data, including the fps and duration in seconds.
     """
-    song_id: int
     fps: int
     duration_sec: float
 
