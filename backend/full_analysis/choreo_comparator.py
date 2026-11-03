@@ -3,6 +3,7 @@ from zpi_app.zpi_app.video_frame_model import Frame
 
 
 TIMESTAMP_WINDOW_THRESHOLD = 0.2  # seconds
+TIMESTAMP_TOLERANCE_THRESHOLD = 0.07  # seconds
 
 HIP_HEIGHT_TOLERANCE_THRESHOLD = 0.1  # meters
 ANGLE_TOLERANCE_THRESHOLD = 45.0  # degrees
@@ -38,6 +39,25 @@ def _get_similarity(diff: float, tolerance: float) -> float:
         float: The normalized similarity score.
     """
     return max(0.0, 1.0 - abs(diff) / tolerance)
+
+def _get_timestamp_weight(timestamp_difference: float) -> float:
+    """
+    Returns the weight for a frame based on its absolute timestamp difference.
+
+    Differences within the tolerance threshold receive full weight.
+    Differences between the tolerance and window thresholds are linearly reduced to zero.
+    """
+    difference = abs(timestamp_difference)
+    if difference <= TIMESTAMP_TOLERANCE_THRESHOLD:
+        return 1.0
+    if difference >= TIMESTAMP_WINDOW_THRESHOLD:
+        return 0.0
+
+    remaining_range = TIMESTAMP_WINDOW_THRESHOLD - TIMESTAMP_TOLERANCE_THRESHOLD
+    return (
+        (TIMESTAMP_WINDOW_THRESHOLD - difference)
+        / remaining_range
+    )
 
 def _compare_frames(base_frame: ChoreoFrame, compare_frame: Frame) -> tuple[float, float, dict[str, float]]:
     """
@@ -221,7 +241,8 @@ def compare_choreos(base_choreo: ChoreoData,
         )
 
         scored_frames.append(scored_frame)
-        final_score_sum += scored_frame.score
+        timestamp_weight = _get_timestamp_weight(scored_frame.delay_sec)
+        final_score_sum += scored_frame.score * timestamp_weight
 
     final_score = (
         final_score_sum / len(scored_frames)
