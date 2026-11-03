@@ -121,8 +121,14 @@ class VideoApiTests(APITestCase):
 
     def test_upload_queues_analysis_after_commit(self):
         with mock.patch('videos.services.start_analysis') as start_analysis:
-            with self.captureOnCommitCallbacks(execute=True):
+            # execute=False: the callbacks are only collected, as if the transaction hadn't committed yet.
+            with self.captureOnCommitCallbacks() as callbacks:
                 response = self.upload(title='New', file=video_file())
+            start_analysis.assert_not_called()  # not before the commit
+
+            self.assertEqual(len(callbacks), 1)
+            callbacks[0]()  # what Django runs once the transaction commits
+
         video = Video.objects.get(pk=response.data['id'])
         start_analysis.assert_called_once_with(video=video)
 
@@ -208,7 +214,7 @@ class VideoApiTests(APITestCase):
         self.assertTrue(self.analysed.path_to_resource.name.endswith('.webm'))
         self.assertTrue(Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name).is_file())
         self.assertFalse(old_path.exists())
-        start_analysis.assert_called_once_with(video=mock.ANY)
+        start_analysis.assert_called_once_with(video=self.analysed)
 
     def test_replace_file_rejects_non_video(self):
         response = self.client.patch(
@@ -362,12 +368,17 @@ class AnalyseVideoTaskTests(TestCase):
         self.assertEqual(self.video.json_analysis, frames)
 
     def test_status_is_processing_while_running(self):
-        def check_status(file_path):
-            self.assertEqual(Video.objects.get(pk=self.video.pk).analysis_status, AnalysisStatus.PROCESSING)
+        statuses_seen = []
+
+        def record_status(file_path):
+            statuses_seen.append(Video.objects.get(pk=self.video.pk).analysis_status)
             return []
 
-        with mock.patch('videos.tasks.run_analysis', side_effect=check_status):
+        with mock.patch('videos.tasks.run_analysis', side_effect=record_status):
             analyse_video(self.video.pk)
+        # Asserted here, not inside record_status: the task catches every exception from
+        # run_analysis, so a failing assert in there would only mark the video 'failed'.
+        self.assertEqual(statuses_seen, [AnalysisStatus.PROCESSING])
 
     def test_error_marks_failed(self):
         with mock.patch('videos.tasks.run_analysis', side_effect=RuntimeError('boom')):
