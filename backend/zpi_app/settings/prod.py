@@ -1,5 +1,5 @@
 """
-Production settings (default for wsgi.py).
+Production settings (default for asgi.py).
 
 Run `python manage.py check --deploy --settings=zpi_app.settings.prod`
 to have Django audit these.

@@ -1,24 +1,24 @@
 """
-URL configuration for zpi_app project.
+URL configuration for zpi_app project: the whole API is routed from this file.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/6.1/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+Resources (videos, ...) are ViewSets registered on one router; one-off actions
+(login, logout, ...) get a plain path() to a function view.
+https://www.django-rest-framework.org/api-guide/routers/
 """
 from django.contrib import admin
 from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from videos.views import VideoViewSet
+
+router = DefaultRouter()
+router.register('videos', VideoViewSet, basename='video')
+
+# @TODO static files and media files in django - django-storages
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', include(router.urls)),
     # Login/logout pages for DRF's browsable API (handy for poking at /api/ in a browser).
     path('api-auth/', include('rest_framework.urls')),
 ]
