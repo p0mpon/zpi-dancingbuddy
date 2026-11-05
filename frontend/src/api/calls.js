@@ -13,6 +13,7 @@ export async function getAllVideos(){
 
 export async function postVideo(video){
     try {
+        console.log(process.env.REACT_APP_API_URL)
         const response = await defaultApi.post(API_ENDPOINTS.videos, video)
         return response.data;
     } catch (e) {
