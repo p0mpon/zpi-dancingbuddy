@@ -9,6 +9,13 @@ DEBUG = True
 SECRET_KEY = env("DJANGO_SECRET_KEY", "django-insecure-dev-only-key")
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0")
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS", "http://localhost:3000" )
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = env_list(
+    "DJANGO_CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+)
 
 # Print emails (e.g. password resets) to the console instead of sending them.
 MAILERS = {

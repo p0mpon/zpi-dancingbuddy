@@ -7,6 +7,7 @@ asgiref==3.12.1
 sqlparse==0.6.0
 tzdata==2026.4
 djangorestframework==3.18.3
+django-cors-headers>=4.0
 # ASGI server for production: uvicorn zpi_app.asgi:application
 uvicorn==0.54.0
 
