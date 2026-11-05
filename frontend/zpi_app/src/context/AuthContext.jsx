@@ -1,7 +1,6 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import {authApi} from '../api/axios_instances';
-import {API_ENDPOINTS} from "../api/endpoints";
+import {getUser, loginUser} from "../api/calls";
 
 const AuthContext = createContext(null);
 
@@ -10,24 +9,37 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        authApi.get(API_ENDPOINTS.user)
-            .then((response) => {
-                console.log(response);
-                setUser(response.data)
-            })
-            // .catch(() => setUser(null))
-            .finally(() => setLoading(false));
+        const checkAuth = async () => {
+            try {
+                const userData = await getUser();
+                if (userData) {
+                    setUser(userData);
+                }
+            } catch (error) {
+                setUser(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        checkAuth();
     }, []);
 
-    const login = async (credentials) => {
-        await authApi.post(API_ENDPOINTS.login, credentials);
-        const response = await authApi.get(API_ENDPOINTS.user);
-        setUser(response.data);
+    const login = async (username, password) => {
+        const userData = await loginUser(username, password);
+        if (userData) {
+            setUser(userData);
+            return true;
+        }
+        return false;
     };
 
     const logout = async () => {
-        await authApi.post(API_ENDPOINTS.logout);
-        setUser(null);
+        try {
+            setUser(null);
+        } catch (error) {
+            console.error("Logout failed", error);
+        }
     };
 
     return (

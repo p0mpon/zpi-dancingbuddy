@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Badge, Button, Row, Col, Card} from 'react-bootstrap';
 import {Film} from 'react-bootstrap-icons';
 import {useNavigate, useSearchParams} from "react-router-dom";
-import {getAllVideos} from "../api/calls";
+import {getAllVideos, getFullVideo} from "../api/calls";
 import VideoPreviewModal from "../components/Modals/VideoPreviewModal";
 
 
@@ -26,7 +26,7 @@ export default function VideoList() {
 
     useEffect(() => {
         const handleHashChange = () => {
-            const hash = window.location.hash; // e.g., "#preview-1"
+            const hash = window.location.hash;
             if (hash.startsWith('#preview-')) {
                 const videoId = parseInt(hash.replace('#preview-', ''), 10);
                 const found = videos.find(v => v.id === videoId);
@@ -52,7 +52,11 @@ export default function VideoList() {
     };
     
     const showPreview = (video) => {
-        window.location.hash = `#preview-${video.id}`;
+        getFullVideo(video.id).then(video => {
+            setSelectedVideo(video);
+            console.log(video);
+        })
+        window.location.hash = `preview-${video.id}`;
     }
 
     const closePreview = () => {
@@ -61,7 +65,6 @@ export default function VideoList() {
     };
     
     const switchToVideo = () => {
-        console.log('hey it works');
         navigate('/video/' + selectedVideo.id, {
             state: {
                 currentVideo: selectedVideo
@@ -119,7 +122,7 @@ export default function VideoList() {
                                         className="pt-3 border-top border-secondary d-flex align-items-center justify-content-between text-muted fs-8">
                                         <div className="d-flex align-items-center gap-2">
                                             {/*<Image src={video.authorAvatar} alt={video.author} roundedCircle width={20} height={20} /> */}
-                                            <span className="text-light fw-medium">{video.author}</span>
+                                            {/*<span className="text-light fw-medium">{video.author}</span>*/}
                                         </div>
                                     </div>
                                 </Card.Body>

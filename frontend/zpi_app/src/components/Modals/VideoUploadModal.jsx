@@ -3,11 +3,10 @@ import {Modal, Form, Button, Spinner, Alert, Col} from 'react-bootstrap';
 import {CheckCircleFill, Upload} from 'react-bootstrap-icons';
 import {postVideo} from "../../api/calls";
 
-export function VideoUploadModal({show, onClose, onUploadSuccess}) {
+export function VideoUploadModal({show, onClose}) {
     const [uploadForm, setUploadForm] = useState({
         title: "",
         description: "",
-        category: "Development",
         videoFile: null,
     });
     const [isUploading, setIsUploading] = useState(false);
@@ -29,25 +28,21 @@ export function VideoUploadModal({show, onClose, onUploadSuccess}) {
             const data = new FormData();
             data.append("title", uploadForm.title);
             data.append("description", uploadForm.description);
-            data.append("author", uploadForm.author);
-            data.append("video", uploadForm.videoFile);
+            data.append("file", uploadForm.videoFile);
             
             console.log(data);
 
-            const video = await postVideo(data).then((res) => {
-                console.log()
-            });
+            const response = await postVideo(data);
+            console.log("response", response);
 
             setUploadSuccessMsg("Video uploaded successfully!");
 
-            setUploadForm({title: "", description: "", category: "Development", videoFile: null});
+            setUploadForm({title: "", description: "", videoFile: null});
 
-            if (onUploadSuccess) onUploadSuccess(video);
             onClose();
 
         } catch (err) {
-            console.error("Upload error:", err);
-            setErrorMessage(err.response?.data?.message || "Failed to upload video. Please check your network.");
+            setErrorMessage("Failed to upload video. Please check your network.");
         } finally {
             setIsUploading(false);
         }
@@ -107,6 +102,7 @@ export function VideoUploadModal({show, onClose, onUploadSuccess}) {
                             <Form.Label className="fs-7 fw-semibold text-light">Video File (.mp4)</Form.Label>
                             <Form.Control
                                 type="file"
+                                required
                                 accept="video/*"
                                 onChange={(e) => setUploadForm({...uploadForm, videoFile: e.target.files[0]})}
                                 className="bg-dark border-secondary text-light shadow-none fs-8"

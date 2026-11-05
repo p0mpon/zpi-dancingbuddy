@@ -30,7 +30,7 @@ export default function VideoDisplay() {
                 <div
                     className="ratio ratio-16x9 bg-black rounded-4 overflow-hidden border border-secondary shadow-lg mb-4">
                     <video
-                        src={currentVideo.url}
+                        src={currentVideo.file}
                         controls
                         autoPlay
                         poster={currentVideo.thumbnail}
@@ -49,7 +49,7 @@ export default function VideoDisplay() {
                             {/*<Image src={currentVideo.authorAvatar} alt={currentVideo.author} roundedCircle width={45} height={45} className="border border-secondary" />*/}
                             <div>
                                 <h6 className="fw-bold mb-0 text-light">{currentVideo.author}</h6>
-                                <p> tu jest nic tak zwane</p>
+                                <p>{currentVideo.description || "Description not provided."}</p>
                             </div>
                         </div>
                     </div>

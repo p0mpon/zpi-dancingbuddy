@@ -1,4 +1,4 @@
-import {defaultApi} from "./axios_instances";
+import {authApi, defaultApi} from "./axios_instances";
 import {API_ENDPOINTS} from "./endpoints";
 
 export async function getAllVideos(){
@@ -16,7 +16,7 @@ export async function postVideo(video){
         const response = await defaultApi.post(API_ENDPOINTS.videos, video)
         return response.data;
     } catch (e) {
-        console.error(e);
+        console.error("error details:", e.response?.data);
         throw e;
     }
 }
@@ -25,6 +25,25 @@ export async function getVideo(id){
     try {
         const response = await defaultApi.get(API_ENDPOINTS.video_details(id))
         return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getFullVideo(id){
+    try {
+        const response = await defaultApi.get(API_ENDPOINTS.video_details(id))
+        const stream_response = await defaultApi.get(API_ENDPOINTS.video_stream(id), {
+            responseType: 'blob'
+        });
+
+        const blob = URL.createObjectURL(stream_response.data);
+
+        return {
+            ...response.data,
+            file: blob
+        };
     } catch (e) {
         console.error(e);
         throw e;
@@ -48,6 +67,29 @@ export async function deleteVideo(id){
     } catch (e) {
         console.error(e);
         throw e;
+    }
+}
+
+//--- auth endpoints ---
+
+export async function loginUser (username, password) {
+    try {
+        const response = await authApi.post('login/', {
+            username: username,
+            password: password
+        });
+        return response.data;
+    } catch (error) {
+        return false;
+    }
+}
+
+export async function getUser(id){
+    try {
+        const response = await authApi.get(API_ENDPOINTS.user)
+        return response.data;
+    } catch (error){
+        return false;
     }
 }
 

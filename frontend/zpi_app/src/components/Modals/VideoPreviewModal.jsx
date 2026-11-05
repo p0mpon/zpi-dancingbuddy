@@ -16,7 +16,7 @@ export default function VideoPreviewModal({previewVideo, onHide, switchToVideoVi
                     <Modal.Body className="p-0">
                         <div className="ratio ratio-16x9 bg-dark">
                             <video
-                                src={previewVideo.url}
+                                src={previewVideo.file}
                                 controls
                                 autoPlay
                                 muted

@@ -21,7 +21,6 @@ export default function MainLayout({showSearch}) {
             <VideoUploadModal
                 show={showUpload}
                 onClose={() => setShowUpload(false)}
-                onUploadSuccess={() => setShowUpload(true)}
             />
         </>
     );

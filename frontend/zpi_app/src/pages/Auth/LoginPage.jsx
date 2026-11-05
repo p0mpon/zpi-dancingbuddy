@@ -41,7 +41,7 @@ export function LoginPage() {
                         <Form.Group className="mb-3" controlId="loginEmail">
                             <Form.Label className="text-muted-light small" column>Email Address</Form.Label>
                             <Form.Control
-                                type="email"
+                                // type="email"
                                 placeholder="name@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
