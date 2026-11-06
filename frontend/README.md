@@ -1,4 +1,4 @@
-<span style="font-size:36px"><b>for the love of god please read below before you start debugging</b></span>
+# <span style="font-size:40px">for the love of god please read below before you start debugging</span>
 
 1. there are two separate .env files to fill:
    * backend .env: http://localhost:3000 (default react url) in both CSRF_TRUSTED_ORIGINS and CORS_ALLOWED_ORIGINS
