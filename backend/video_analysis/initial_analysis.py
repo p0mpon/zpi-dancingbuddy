@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+from pathlib import Path
 from typing import Dict, List, Optional, Callable, Tuple
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -135,7 +136,7 @@ def default_progress_reporter(current_frame: int, total_frames: int, progress_pc
 
 def analyze_dance_video(
         video_path: str,
-        model_path: str = "pose_landmarker_full.task",
+        model_path: Optional[str] = None,
         target_fps: float = 30.0,
         playback_speed: float = 1.0,
         mirror_video: bool = False,
@@ -155,6 +156,12 @@ def analyze_dance_video(
     video_duration_sec = total_native_frames / native_fps if native_fps > 0 else 0
     total_target_frames = int(video_duration_sec * target_fps)
     dt = 1.0 / target_fps
+
+    if model_path is None:
+        model_path = str(Path(__file__).resolve().with_name("pose_landmarker_full.task"))
+
+    if not Path(model_path).is_file():
+        raise FileNotFoundError(f"Pose landmarker model not found: {model_path}")
 
     base_options = python.BaseOptions(model_asset_path=model_path)
     options = vision.PoseLandmarkerOptions(

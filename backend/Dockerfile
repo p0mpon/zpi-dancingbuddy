@@ -11,6 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # System libraries needed by audio/video processing (Essentia, MediaPipe, ffmpeg)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
+        libegl1 \
+        libgles2 \
         libgl1 \
         libglib2.0-0 \
         libsndfile1 \
