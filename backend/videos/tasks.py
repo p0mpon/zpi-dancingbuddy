@@ -14,17 +14,15 @@ from celery import shared_task
 from . import services
 from .models import AnalysisStatus, Video
 
+from full_analysis.choreo_analyzer import perform_full_analysis
+
 logger = logging.getLogger(__name__)
 
 
 def run_analysis(file_path):
     """Analyse the video file at file_path and return the value for json_analysis."""
-    # TODO: connect the analysis entry point here (pose detection with MediaPipe, ...).
-    # It gets the absolute path of the video file and must return JSON-serialisable data.
-    # The format isn't decided yet (list of Frame vs DAN-35's ChoreoData).
-    # Until then every analysis ends as 'failed'.
-    raise NotImplementedError('Video analysis is not connected yet.')
-
+    frames = perform_full_analysis(file_path)
+    return [frame.model_dump() for frame in frames]
 
 @shared_task
 def analyse_video(video_id):

@@ -20,6 +20,7 @@ celery[redis]==5.6.3
 
 # Video analysis
 mediapipe==1.1.0
+scipy==1.16.3
 
 # categorize these later
 cffi==2.1.1
