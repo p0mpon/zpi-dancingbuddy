@@ -1,0 +1,42 @@
+$kind: http-request
+description: |-
+  Upload a video (multipart/form-data). Queues the analysis.
+
+  | Field | Required | Rules |
+  |---|---|---|
+  | `title` | yes | max 200 characters |
+  | `description` | no | max 500 characters, default `""` |
+  | `file` | yes | `mp4`, `mov` or `webm`, max 500 MB |
+
+  **201** with the video object, `analysis_status: "pending"`. A few seconds later the worker
+  sets it to `failed` (the analysis isn't connected yet, see `run_analysis()` in `videos/tasks.py`).
+
+  **400** with the field errors, e.g. `{"file": ["Allowed file types: mp4, mov, webm."]}`.
+
+  Pick your own file in the `file` row: the path below is a file on one developer's machine.
+url: "{{base}}/videos/"
+method: POST
+body:
+  type: formdata
+  content:
+    - type: text
+      key: title
+      value: Salsa test
+      description: "Required, max 200 characters"
+      disabled: false
+    - type: text
+      key: description
+      value: first upload
+      description: "Optional, max 500 characters"
+      disabled: false
+    - type: file
+      key: file
+      src:
+        - /E:/Edu/Zima2026-2027/ZPI/Projekt/Test_videos/youtube_1080.mp4
+      description: "Required: mp4, mov or webm, max 500 MB"
+      disabled: false
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 1000

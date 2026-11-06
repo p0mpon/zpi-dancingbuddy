@@ -1,0 +1,22 @@
+$kind: http-request
+description: |-
+  Validation check: no `title` and no `file`.
+
+  **400** with an error per field:
+  `{"title": ["This field is required."], "file": ["No file was submitted."]}`.
+  Nothing is saved.
+url: "{{base}}/videos/"
+method: POST
+body:
+  type: formdata
+  content:
+    - type: text
+      key: description
+      value: no title on purpose
+      description: ""
+      disabled: false
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 1500

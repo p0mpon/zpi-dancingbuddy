@@ -1,0 +1,11 @@
+$kind: http-request
+description: |-
+  Same as stream, with `?download=1`: `Content-Disposition: attachment; filename="<title>.<ext>"`,
+  so a browser saves the file instead of playing it.
+url: "{{base}}/videos/{{id}}/stream/?download=1"
+method: GET
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 5500
