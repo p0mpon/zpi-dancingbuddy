@@ -1,3 +1,11 @@
+<span style="font-size:36px"><b>for the love of god please read below before you start debugging</b></span>
+
+1. there are two separate .env files to fill:
+   * backend .env: http://localhost:3000 (default react url) in both CSRF_TRUSTED_ORIGINS and CORS_ALLOWED_ORIGINS
+   * frontend .env: docker-compose level, http://localhost:8000 (default django url) in API_URL and your superuser creds
+2. <b>clear web page data</b> before checking if your changes work
+3. haven't noticed any changes but turning off your adblock might help just in case
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
@@ -68,9 +76,3 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
-
-## Before you run
-
-* there is a separate .env for front, fill that out pretty please
-* add your react app url to csrf trusted/cors allowed origins in backend
-* before checking any changes: adblock off, clear web page data
