@@ -1,0 +1,992 @@
+openapi: 3.0.3
+info:
+  title: OnBeat API
+  version: 1.0.0
+  description: |
+    API for uploading, managing, attempting and analyzing choreography videos.
+
+servers:
+  - url: /
+
+tags:
+  - name: Videos
+    description: Video uploads, retrieval and analysis
+  - name: Auth
+    description: Authentication
+  - name: Users
+    description: User management and retrieval
+  - name: Dance Attempts
+    description: History and details of dance attempts
+
+paths:
+  /api/auth/register/:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user
+      security: []
+      description: Creates a new user account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterUserRequest'
+      responses:
+        '201':
+          description: User created successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Username or login already exists.
+        '429':
+          description: Too many requests. Rate limit exceeded.
+  /api/auth/login/:
+    post:
+      tags:
+        - Auth
+      summary: Login user
+      security: []
+      description: Logs into a user account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginUserRequest'
+      responses:
+        '200':
+          description: User logged in successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: Too many requests. Rate limit exceeded.
+  /api/auth/logout/:
+    post:
+      tags:
+        - Auth
+      summary: Logout user
+      security:
+        - cookieAuth: []
+      description: Logs out of the current user account.
+      responses:
+        '204':
+          description: User logged out successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users/me/:
+    get:
+      summary: Get the currently authenticated user
+      description: Returns the details of the currently authenticated user.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      summary: Update the currently authenticated user display information
+      description: Updates the displayed details of the currently authenticated user.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateUserDisplayDataRequest'
+      responses:
+        '200':
+          description: Current user updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserDto'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Username or login already exists.
+  /api/users/me/edit-login/:
+    patch:
+      summary: Update the currently authenticated user login
+      description: Updates the login of the currently authenticated user.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserLoginRequest'
+      responses:
+        '200':
+          description: Current user login updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserDto'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Username or login already exists.
+  /api/users/me/edit-password/:
+    patch:
+      summary: Update the currently authenticated user password
+      description: Updates the password of the currently authenticated user.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserPasswordRequest'
+      responses:
+        '200':
+          description: Current user password updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserDto'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Old password is incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+              example:
+                detail: Old password is incorrect.
+  /api/users/me/delete/:
+    delete:
+      summary: Delete the currently authenticated user
+      description: Deletes the currently authenticated user account.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Current user deleted successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/videos/:
+    get:
+      parameters:
+        - name: title
+          in: query
+          required: false
+          description: Filter videos by title.
+          schema:
+            type: string
+        - name: songTitle
+          in: query
+          required: false
+          description: Filter videos by song title.
+          schema:
+            type: string
+        - name: songArtist
+          in: query
+          required: false
+          description: Filter videos by song artist.
+          schema:
+            type: string
+        - name: authorUsername
+          in: query
+          required: false
+          description: Filter videos by author username.
+          schema:
+            type: string
+        - name: difficulty
+          in: query
+          required: false
+          description: Filter videos by difficulty.
+          schema:
+            type: string
+            enum:
+              - very easy
+              - easy
+              - medium
+              - hard
+              - very hard
+      tags:
+        - Videos
+      summary: List videos
+      description: Returns the authenticated user's videos, newest first.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: A list of videos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VideoShortDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+        - Videos
+      summary: Upload a video
+      security:
+        - cookieAuth: []
+      description: |
+        Uploads a video and queues it for analysis. 
+        Only MP4 files up to 500 MB are accepted.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VideoUploadRequest'
+      responses:
+        '201':
+          description: Video uploaded successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoDetailsDto'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/videos/{videoId}/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      tags:
+        - Videos
+      summary: Get a video
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Video details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoDetailsDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Videos
+      summary: Update a video
+      security:
+        - cookieAuth: []
+      description: |
+        Updates the title and/or description. A new file may also be supplied;
+        replacing the file re-runs the analysis. The request can be sent as
+        multipart form data when replacing the file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VideoUpdateRequest'
+      responses:
+        '200':
+          description: Video updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoDetailsDto'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Videos
+      summary: Delete a video
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Video deleted successfully.
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/videos/{videoId}/stream/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      tags:
+        - Videos
+      summary: Stream a video
+      security:
+        - cookieAuth: []
+      description: |
+        Streams the original video file. HTTP range requests are supported for
+        seeking. Set `download=1` to receive the file as an attachment.
+      parameters:
+        - name: download
+          in: query
+          required: false
+          description: Download the file instead of displaying it inline.
+          schema:
+            type: string
+            enum:
+              - '1'
+      responses:
+        '200':
+          description: Video content.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            video/quicktime:
+              schema:
+                type: string
+                format: binary
+            video/webm:
+              schema:
+                type: string
+                format: binary
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Partial video content for a range request.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/videos/{videoId}/thumbnail/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      tags:
+        - Videos
+      summary: Get a video thumbnail
+      description: Returns the thumbnail image for a video.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Returns the video thumbnail resource.
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+              example:
+                detail: 'resource/video/thumbnail/video1thumbnail.jpg'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/videos/{videoId}/analysis/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      tags:
+        - Videos
+      summary: Get video analysis
+      security:
+        - cookieAuth: []
+      description: Returns the stored analysis after processing has completed.
+      responses:
+        '200':
+          description: Stored video analysis.
+          content:
+            application/json:
+              schema:
+                description: Analysis JSON produced for the video.
+                nullable: true
+                oneOf:
+                  - type: object
+                    additionalProperties: true
+                  - type: array
+                    items: {}
+        '409':
+          description: Analysis is not complete yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+              example:
+                detail: Video is not analysed yet.
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/instructor/videos/:
+    get:
+      tags:
+        - Videos
+      summary: List videos for instructor
+      security:
+        - cookieAuth: []
+      description: Returns all videos, newest first with data for instructor only.
+      responses:
+        '200':
+          description: A list of videos for current instructor.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InstructorVideoDetailsDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The authenticated user is not an instructor.
+  /api/instructor/videos/{videoId}/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      tags:
+        - Videos
+      summary: Video for instructor
+      security:
+        - cookieAuth: []
+      description: Returns video with data for instructor only.
+      responses:
+        '200':
+          description: Video details for the current instructor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstructorVideoDetailsDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The authenticated user is not an instructor.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dance-attempts/:
+    get:
+      tags:
+        - Dance Attempts
+      summary: History of dance attempts
+      security:
+        - cookieAuth: []
+      description: Returns the authenticated user's dance attempts, newest first.
+      parameters:
+        - $ref: '#/components/parameters/videoIdQuery'
+      responses:
+        '200':
+          description: A list of dance attempts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DanceAttemptShortDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/dance-attempts/{attemptId}/:
+    parameters:
+      - $ref: '#/components/parameters/videoAttemptId'
+    get:
+      tags:
+        - Dance Attempts
+      summary: Get a dance attempt
+      security:
+        - cookieAuth: []
+      description: Returns the details of a specific dance attempt.
+      responses:
+        '200':
+          description: Dance attempt details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DanceAttemptDetailsDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Dance Attempts
+      summary: Delete a dance attempt
+      security:
+        - cookieAuth: []
+      description: Deletes a specific dance attempt.
+      responses:
+        '204':
+          description: Dance attempt deleted successfully.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+              
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: Django session cookie.
+
+  parameters:
+    videoId:
+      name: videoId
+      in: path
+      required: true
+      description: Numeric video identifier.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    videoIdQuery:
+      name: videoId
+      in: query
+      required: true
+      description: Numeric video identifier.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    videoAttemptId:
+      name: attemptId
+      in: path
+      required: true
+      description: Numeric dance attempt identifier.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  schemas:
+    # Authentication
+    RegisterUserRequest:
+      type: object
+      required:
+        - username
+        - login
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        login:
+          type: string
+          minLength: 6
+          maxLength: 32
+        password:
+          type: string
+          minLength: 12
+          maxLength: 32
+
+    LoginUserRequest:
+      type: object
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          minLength: 6
+          maxLength: 32
+        password:
+          type: string
+          minLength: 12
+          maxLength: 32
+
+    # Users
+    CurrentUserDto:
+      type: object
+      required:
+        - userId
+        - username
+        - login
+        - avatarUrl
+      properties:
+        userId:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        login:
+          type: string
+          readOnly: true
+        avatarUrl:
+          type: string
+          format: uri
+          readOnly: true
+          description: URL to the user's avatar image.
+
+    UpdateUserDisplayDataRequest:
+      type: object
+      minProperties: 1
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        avatarFile:
+          type: string
+          format: binary
+          description: New avatar image file. Accepted formats are JPEG and PNG.
+
+    UpdateUserLoginRequest:
+      type: object
+      required:
+        - login
+        - password # for safety
+      properties:
+        login:
+          type: string
+          minLength: 6
+          maxLength: 32
+        password:
+          type: string
+
+    UpdateUserPasswordRequest:
+      type: object
+      required:
+        - old_password
+        - new_password
+      properties:
+        old_password:
+          type: string
+          minLength: 12
+          maxLength: 32
+        new_password:
+          type: string
+          minLength: 12
+          maxLength: 32
+
+    # Videos
+    VideoShortDto:
+      type: object
+      required:
+        - videoId
+        - title
+        - authorUsername
+        - songTitle
+        - songArtist
+        - likesCount
+        - timesPlayed
+        - difficulty
+        - created_at
+      properties:
+        videoId:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+          readOnly: true
+        description:
+          type: string
+          maxLength: 500
+          readOnly: true
+        authorUsername:
+          type: string
+          maxLength: 32
+          readOnly: true
+        songTitle:
+          type: string
+          maxLength: 200
+          readOnly: true
+        songArtist:
+          type: string
+          maxLength: 200
+          readOnly: true
+        likesCount:
+          type: integer
+          readOnly: true
+        timesPlayed:
+          type: integer
+          readOnly: true
+        difficulty:
+          type: string
+          enum:
+            - very easy
+            - easy
+            - medium
+            - hard
+            - very hard
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        
+    VideoDetailsDto:
+      type: object
+      required:
+        - videoId
+        - title
+        - authorUsername
+        - songTitle
+        - songArtist
+        - description
+        - likesCount
+        - timesPlayed
+        - difficulty
+        - created_at
+      properties:
+        videoId:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+          readOnly: true
+        authorUsername:
+          type: string
+          maxLength: 32
+          readOnly: true
+        songTitle:
+          type: string
+          maxLength: 200
+          readOnly: true
+        songArtist:
+          type: string
+          maxLength: 200
+          readOnly: true
+        description:
+          type: string
+          maxLength: 500
+          readOnly: true
+        likesCount:
+          type: integer
+          readOnly: true
+        timesPlayed:
+          type: integer
+          readOnly: true
+        difficulty:
+          type: string
+          enum:
+            - very easy
+            - easy
+            - medium
+            - hard
+            - very hard
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    
+    InstructorVideoDetailsDto:
+      type: object
+      required:
+        - videoId
+        - title
+        - authorUsername
+        - songTitle
+        - songArtist
+        - description
+        - likesCount
+        - timesPlayed
+        - difficulty
+        - created_at
+        - analysis_status
+      properties:
+        videoId:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+          readOnly: true
+        authorUsername:
+          type: string
+          maxLength: 32
+          readOnly: true
+        songTitle:
+          type: string
+          maxLength: 200
+          readOnly: true
+        songArtist:
+          type: string
+          maxLength: 200
+          readOnly: true
+        description:
+          type: string
+          maxLength: 500
+          readOnly: true
+        likesCount:
+          type: integer
+          readOnly: true
+        timesPlayed:
+          type: integer
+          readOnly: true
+        difficulty:
+          type: string
+          enum:
+            - very easy
+            - easy
+            - medium
+            - hard
+            - very hard
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        analysis_status:
+          type: string
+          enum:
+            - pending
+            - processing
+            - done
+            - failed
+          readOnly: true
+        
+    VideoUploadRequest:
+      type: object
+      required:
+        - title
+        - file
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 500
+          default: ''
+        file:
+          type: string
+          format: binary
+          description: MP4 file, up to 500 MB.
+
+    VideoUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 500
+        file:
+          type: string
+          format: binary
+          description: Replacement MP4 file, up to 500 MB.
+
+    # Dance Attempts
+    DanceAttemptShortDto:
+      type: object
+      required:
+        - attemptId
+        - attemptDate
+        - attemptOverallScore
+        - lastAttemptScoreDifference
+      properties:
+        attemptId:
+          type: integer
+          readOnly: true
+        attemptDate:
+          type: string
+          format: date-time
+          readOnly: true
+        attemptOverallScore:
+          type: integer
+          readOnly: true
+        lastAttemptScoreDifference:
+          type: integer
+          readOnly: true
+
+    DanceAttemptDetailsDto:
+      type: object
+      required:
+        - attemptId
+        - attemptDate
+        - attemptOverallScore
+        - lastAttemptScoreDifference
+        - detailedFramesScores
+      properties:
+        attemptId:
+          type: integer
+          readOnly: true
+        attemptDate:
+          type: string
+          format: date-time
+          readOnly: true
+        attemptOverallScore:
+          type: integer
+          readOnly: true
+        lastAttemptScoreDifference:
+          type: integer
+          readOnly: true
+        detailedFramesScores:
+          type: array
+          readOnly: true
+          items:
+            type: object
+            additionalProperties: true
+
+    # Error Responses
+    DetailError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+
+    ValidationError:
+      type: object
+      description: Serializer validation errors keyed by field name.
+      additionalProperties:
+        type: array
+        items:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication is required.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    BadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
