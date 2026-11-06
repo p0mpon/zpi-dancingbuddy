@@ -49,3 +49,9 @@ Thumbs.db
 
 # Uploads written by the test suite (settings/test.py)
 /backend/test_media/
+
+# --- Postman ---
+# Personal workspace link + local-only variables; the collection itself is shared
+.postman/
+/postman/globals/
+/postman/environments/

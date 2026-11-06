@@ -1,0 +1,14 @@
+$kind: http-request
+description: |-
+  The whole analysis JSON (`json_analysis`), once `analysis_status` is `done`.
+
+  **409** `{"detail": "Video is not analysed yet."}` while it's `pending`, `processing` or
+  `failed`. Right now every analysis ends as `failed` (`run_analysis()` is a TODO), so expect 409.
+  The JSON format isn't decided yet.
+url: "{{base}}/videos/{{id}}/analysis/"
+method: GET
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 6000

@@ -1,0 +1,12 @@
+$kind: http-request
+description: |-
+  Deletes the video row and its file. **Can't be undone.**
+
+  **204** with no body. Sending it again (or GET by id) → **404**.
+url: "{{base}}/videos/{{id}}/"
+method: DELETE
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 9000

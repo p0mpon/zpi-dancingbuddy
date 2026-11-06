@@ -1,0 +1,19 @@
+$kind: http-request
+description: |-
+  The video file, as a `<video src>` player gets it.
+
+  **200** with the whole file: `Content-Type: video/mp4` (or `video/quicktime`, `video/webm`),
+  `Accept-Ranges: bytes`, `Content-Disposition: inline; filename="<title>.<ext>"`.
+
+  Seeking: add the header `Range: bytes=0-99` → **206** with only those bytes and
+  `Content-Range: bytes 0-99/<size>`. `bytes=100-` and `bytes=-100` work too.
+  A range past the end of the file → **416**.
+
+  Postman can't play the video; check the response **Headers** tab.
+url: "{{base}}/videos/{{id}}/stream/"
+method: GET
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 5000

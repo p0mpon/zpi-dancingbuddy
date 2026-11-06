@@ -1,0 +1,16 @@
+$kind: http-request
+description: |-
+  One video by id (set the `id` variable, e.g. from the upload response).
+
+  **200** with the video object. Check `analysis_status` here before asking for the analysis:
+  `pending` → `processing` → `done` or `failed`.
+
+  **404** if the id doesn't exist **or belongs to another user** (the API doesn't reveal
+  that someone else's video exists).
+url: "{{base}}/videos/{{id}}/"
+method: GET
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 3000
