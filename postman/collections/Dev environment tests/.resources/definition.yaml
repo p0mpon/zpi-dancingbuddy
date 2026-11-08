@@ -1,0 +1,28 @@
+$kind: collection
+description: |-
+  Videos API on the local dev server (`docker compose up -d`, then [http://localhost:8000](http://localhost:8000)).  
+  Full docs: `backend/videos/README.md`.
+
+  **Setup**
+
+  - Environment **Variables**: `base` = `http://localhost:8000/api`, `id` = a video id  
+      (take it from the upload response).
+      
+  - Auth: Basic Auth on this collection, inherited by every request. Basic Auth is enabled  
+      in **dev settings only**. Create a user with  
+      `docker compose exec dancing-buddy-backend python manage.py createsuperuser`.
+      
+
+  **Order**: upload → list → get → rename → stream → analysis → delete.
+variables:
+  base: ""
+  id: ""
+auth:
+  - id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+    type: basic
+    name: Basic Auth
+    credentials:
+      username: admin
+      password: admin
+    rules:
+      url: http://localhost:8000/api

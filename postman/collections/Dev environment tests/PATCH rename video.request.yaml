@@ -1,0 +1,29 @@
+$kind: http-request
+description: |-
+  Rename: send only the fields that change (`title`, `description`). The analysis is kept.
+
+  Also accepts `file` (form-data, File) to replace the video: same rules as upload, the old
+  analysis is cleared, `analysis_status` goes back to `pending` and a new analysis is queued.
+
+  `file_size` and `analysis_status` in the body are ignored. **200** with the updated video,
+  **400** for invalid values, **404** for a missing or someone else's video.
+url: "{{base}}/videos/{{id}}/"
+method: PATCH
+body:
+  type: formdata
+  content:
+    - type: text
+      key: title
+      value: Salsa renamed
+      description: "Optional, max 200 characters"
+      disabled: false
+    - type: text
+      key: description
+      value: slow version
+      description: "Optional, max 500 characters"
+      disabled: false
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 4000

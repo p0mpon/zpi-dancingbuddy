@@ -1,0 +1,16 @@
+$kind: http-request
+description: |-
+  List your own videos, newest first.
+
+  **200** with a list of video objects:
+  `id`, `title`, `description`, `file_size` (bytes), `analysis_status`, `created_at`.
+  No videos is `[]` (still 200, not 404). Other users' videos never appear.
+
+  **403** when not logged in.
+url: "{{base}}/videos/"
+method: GET
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 2000
