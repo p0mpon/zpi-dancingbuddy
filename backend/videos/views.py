@@ -4,7 +4,7 @@ Videos API. Routes (registered in zpi_app/urls.py):
     GET     /api/videos/                        list
     POST    /api/videos/                        create (multipart upload, queues the analysis)
     GET     /api/videos/{id}/                   retrieve
-    PATCH   /api/videos/{id}/                   partial_update (rename; a new file re-runs the analysis)
+    PATCH   /api/videos/{id}/                   partial_update (title, description, song fields, difficulty, visibility (publish / unpublish))
     DELETE  /api/videos/{id}/                   destroy
     GET     /api/videos/{id}/stream/            stream
     GET     /api/videos/{id}/thumbnail/         thumbnail
@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from . import services
 from .models import Video
 from .serializers import VideoSerializer, VideoUploadSerializer
+from .services import VideoServiceError
 from .streaming import range_file_response
 
 
@@ -59,7 +60,11 @@ class VideoViewSet(viewsets.ViewSet):
         serializer = VideoSerializer(video, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         # validated_data holds only writable fields that were sent (file_size etc. are dropped).
-        video = services.update_video(video=video, **serializer.validated_data)
+        try:
+            video = services.update_video(video=video, **serializer.validated_data)
+        except VideoServiceError as error:
+            return Response({'detail': str(error)}, status=status.HTTP_409_CONFLICT)
+
         return Response(VideoSerializer(video).data)
 
     def destroy(self, request, pk=None):
@@ -100,3 +105,21 @@ class VideoViewSet(viewsets.ViewSet):
         # TODO: the json_analysis format isn't decided yet (list of Frame vs DAN-35's ChoreoData);
         # it's returned as stored.
         return Response(video.json_analysis)
+
+
+    # PUBLISH/UNPUBLISH endpoint - use regular PATCH for visibility
+    #
+    # @action(detail=True, methods=['post'])
+    # def publish(self, request, pk=None):
+    #     video = self.get_video(pk)
+    #     try:
+    #         services.publish_video(video=video)
+    #     except VideoServiceError as error:
+    #         return Response({'detail': str(error)}, status=status.HTTP_409_CONFLICT)
+    #     return Response(VideoSerializer(video).data)
+    #
+    # @action(detail=True, methods=['post'])
+    # def unpublish(self, request, pk=None):
+    #     video = self.get_video(pk)
+    #     services.unpublish_video(video=video)
+    #     return Response(VideoSerializer(video).data)

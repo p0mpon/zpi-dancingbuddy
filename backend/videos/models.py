@@ -33,7 +33,7 @@ class AnalysisStatus(models.TextChoices):
 
 
 class Video(models.Model):
-    """VIDEO table from db/diagram/v1.md."""
+    """VIDEO table from db/diagram/v2.md."""
 
     # int id: Django adds it automatically, nothing to write
     title = models.CharField(max_length=200)                        # string title
@@ -63,12 +63,14 @@ class Video(models.Model):
         null=True,
         blank=True,
     )
-    duration_seconds = models.FloatField(null=True, blank=True) # null until analysed
+    duration_seconds = models.FloatField(null=True, blank=True) # read on upload (ffprobe), null if unreadable
     thumbnail = models.ImageField(                              # null until generated
         upload_to=video_thumbnail_upload_path,
         null=True,
         blank=True,
     )
+    song_author = models.CharField(max_length=200, blank=True, default='')  # typed by the user
+    song_title = models.CharField(max_length=200, blank=True, default='')
     likes_count = models.IntegerField(default=0)                # kept in sync with VIDEO_LIKE
 
     created_at = models.DateTimeField(auto_now_add=True)        # date created_at
