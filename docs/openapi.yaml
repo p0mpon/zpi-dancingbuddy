@@ -387,28 +387,6 @@ paths:
                 format: binary
         '404':
           $ref: '#/components/responses/NotFound'
-  /api/videos/{videoId}/thumbnail/:
-    parameters:
-      - $ref: '#/components/parameters/videoId'
-    get:
-      tags:
-        - Videos
-      summary: Get a video thumbnail
-      description: Returns the thumbnail image for a video.
-      security:
-        - cookieAuth: []
-      responses:
-        '200':
-          description: Returns the video thumbnail resource.
-          content:
-            application/json:
-              schema:
-                type: string
-                format: binary
-              example:
-                detail: 'resource/video/thumbnail/video1thumbnail.jpg'
-        '404':
-          $ref: '#/components/responses/NotFound'
   /api/videos/{videoId}/analysis/:
     parameters:
       - $ref: '#/components/parameters/videoId'
@@ -689,6 +667,7 @@ components:
       required:
         - videoId
         - title
+        - thumbnailUrl
         - authorUsername
         - songTitle
         - songArtist
@@ -704,6 +683,11 @@ components:
           type: string
           maxLength: 200
           readOnly: true
+        thumbnailUrl:
+          type: string
+          format: uri
+          readOnly: true
+          description: URL to the video's thumbnail image.
         description:
           type: string
           maxLength: 500
@@ -746,6 +730,7 @@ components:
         - videoId
         - title
         - authorUsername
+        - authorAvatarUrl
         - songTitle
         - songArtist
         - description
@@ -764,6 +749,10 @@ components:
         authorUsername:
           type: string
           maxLength: 32
+          readOnly: true
+        authorAvatarUrl:
+          type: string
+          format: uri
           readOnly: true
         songTitle:
           type: string
@@ -803,6 +792,7 @@ components:
         - videoId
         - title
         - authorUsername
+        - authorAvatarUrl
         - songTitle
         - songArtist
         - description
@@ -822,6 +812,10 @@ components:
         authorUsername:
           type: string
           maxLength: 32
+          readOnly: true
+        authorAvatarUrl:
+          type: string
+          format: uri
           readOnly: true
         songTitle:
           type: string
