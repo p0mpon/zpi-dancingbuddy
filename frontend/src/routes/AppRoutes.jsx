@@ -10,13 +10,13 @@ import MainLayout from "../layouts/MainLayout";
 import LoginRequiredRoute from "./LoginRequiredRoute";
 import {Logout} from "../pages/Auth/Logout";
 import VideoDisplay from "../pages/VideoDisplay";
+import LearningLayout from "../layouts/LearningLayout";
 
 export default function AppRoutes() {
     return (
         <Routes>
             <Route element={<MainLayout showSearch={true}/>}>
                 <Route path="/" element={<VideoList/>}/>
-                <Route path="/video/:id" element={<VideoDisplay/>}/>
             </Route>
 
             <Route element={<MainLayout showSearch={false}/>}>
@@ -24,7 +24,12 @@ export default function AppRoutes() {
                     <Route path="/account" element={<UserDashboard/>}/>
                 </Route>
             </Route>
-
+            
+            <Route element={<LearningLayout/>}>
+                <Route element={<LoginRequiredRoute/>}>
+                    <Route path="/video/:id" element={<VideoDisplay/>}/>
+                </Route>
+            </Route>
 
             <Route element={<AuthLayout/>}>
                 <Route path="/register" element={<RegisterPage/>}/>
