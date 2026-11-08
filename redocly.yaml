@@ -1,0 +1,9 @@
+# Lint config for docs/openapi.yaml:  npx @redocly/cli lint docs/openapi.yaml
+extends:
+  - recommended
+
+rules:
+  # Django / DRF routes always end with "/" (APPEND_SLASH, DefaultRouter), so the spec keeps them.
+  no-path-trailing-slash: off
+  # Student project, no license to publish.
+  info-license: off
