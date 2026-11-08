@@ -1,5 +1,5 @@
-from full_analysis.choreo_data_model import ChoreoData, ChoreoFrame, ScoredFrame
-from zpi_app.zpi_app.video_frame_model import Frame
+from full_analysis.choreo_data_model import ChoreoFrame, ScoredFrame
+from video_analysis.video_frame_model import Frame
 
 
 TIMESTAMP_WINDOW_THRESHOLD = 0.2  # seconds
@@ -197,7 +197,7 @@ def _get_best_frame_in_window(base_frame: ChoreoFrame, compare_frames: list[Fram
         joint_scores=best_joint_scores,
     )
 
-def compare_choreos(base_choreo: ChoreoData,
+def compare_choreos(base_choreo: list[ChoreoFrame],
                     compare_choreo: list[Frame]) -> tuple[list[ScoredFrame], float]:
     """
     Compares two choreographies and returns a detailed analysis of each frame and a general score.
@@ -207,7 +207,7 @@ def compare_choreos(base_choreo: ChoreoData,
     Returns:
         tuple[list[ScoredFrame], float]: A list of scored frames and a general similarity score (between 0 and 1).
     """
-    if not base_choreo.frames or not compare_choreo:
+    if not base_choreo or not compare_choreo:
         return [], 0.0
 
     # NOTE FOR LATER: perhaps add bpm to metadata, to then adjust the acceptable delay window
@@ -215,7 +215,7 @@ def compare_choreos(base_choreo: ChoreoData,
     scored_frames: list[ScoredFrame] = []
     next_compare_index = 0
 
-    for base_frame in base_choreo.frames:
+    for base_frame in base_choreo:
         window_start = base_frame.timestamp_sec - TIMESTAMP_WINDOW_THRESHOLD
         window_end = base_frame.timestamp_sec + TIMESTAMP_WINDOW_THRESHOLD
 
