@@ -61,3 +61,21 @@ class ChoreoFrame(BaseModel):
     audio_context: AudioContext
     global_position: GlobalPosition
     joints: dict[str, JointData]
+
+
+class ScoredFrame(BaseModel):
+    """
+    Represents a scored frame, including:
+    - base_frame_id: the base frame id
+    - compare_frame_id: the compare (user)frame id
+    - timestamp_sec: the timestamp of the frame in seconds
+    - score: the score of the frame
+    - delay_sec: the delay of the frame in seconds
+    - joint_scores: the scores for each joint
+    """
+    base_frame_id: int
+    compare_frame_id: int
+    timestamp_sec: float
+    score: float
+    delay_sec: float
+    joint_scores: dict[str, float]
