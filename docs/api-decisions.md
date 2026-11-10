@@ -63,7 +63,7 @@ Last updated: 2026-11-09.
 | D6.5 | Who can dance which video | 🗂️ | 🟢 |
 | D6.6 | Attempt only on an analysed video | ➕ | 🟢 |
 | D6.7 | Keeping the attempt recording | ➕ | 🟢 ⚠️ |
-| D6.8 | Deleting an attempt | 🆕 | 🔴 |
+| D6.8 | Deleting an attempt | 🆕 | 🟢 ⚠️ |
 | D7.1 | JSON naming | 🆕 | 🟡 ⚠️ |
 | D7.2 | IDs | 🆕 | 🟡 |
 | D7.3 | Pagination | ➕ | 🟢 ⚠️ |
@@ -337,13 +337,13 @@ More filters (e.g. dance style, BPM from audio analysis) can be added later as o
 **Point:** the spec added a play counter without saying what a "play" is.
 
 **Solution:** `times_played` = number of dance attempts on the video, **counted per request**
-(`annotate(times_played=Count('dance_attempts'))`), with no stored column. Attempts can't be deleted (D6.8), so the number
-never goes down.
+(`annotate(times_played=Count('dance_attempts'))`), with no stored column. It counts the attempts that **exist now**:
+deleting an attempt (D6.8) or an account lowers it.
 
 **Change:** ~~stored counter `VIDEO.times_played` with `F() + 1`~~ → **computed from DANCE_ATTEMPT**.
 
-⚠️ Deleting a user account still deletes their attempts (CASCADE), so counts on other people's videos drop then.
-That's accepted; otherwise attempts would have to be kept anonymized (`user = null`).
+⚠️ Deleted attempts are hard-deleted (D6.8) and deleting a user account deletes their attempts (CASCADE), so counts on
+other people's videos can go down. That's accepted.
 ⚠️ The count needs an index on `DANCE_ATTEMPT.reference_video_id`. The v2 index `(user_id, reference_video_id)` starts
 with `user_id`, so it doesn't help here.
 
@@ -432,13 +432,16 @@ analysed in the background like videos (pending → processing → done / failed
 
 **Change:** ~~`lastAttemptScoreDifference`~~ → **`score_diff_previous` + `score_diff_best`**.
 
+⚠️ Because the diffs are computed on read, deleting an attempt (D6.8) changes the diffs of later attempts, and deleting
+my best attempt lowers `best_score` on the video. That's expected: the history only shows attempts that still exist.
+
 ### 🟡 D6.4 🆕 Attempt history
 **Point:** the spec makes `videoId` **required** on `GET /api/dance-attempts/`, so there's no full history.
 
 **Solution:**
 - `GET /api/dance-attempts/`: my full history, paginated, newest first, optional `?video_id=`
 - `GET /api/videos/{id}/dance-attempts/`: my attempts on one video (own or public video, else 404)
-- `GET /api/dance-attempts/{id}/` (no DELETE, see D6.8)
+- `GET /api/dance-attempts/{id}/` and `DELETE /api/dance-attempts/{id}/` (D6.8)
 - `best_score` (my best on that video, null if none) in my-video and library DTOs
 
 **Change:** ~~required `videoId`~~ → **optional filter + nested per-video URL**
@@ -465,16 +468,22 @@ still needed after scoring.
 
 ⚠️ Storage grows with every attempt (up to 500 MB per upload before normalization). Watch the disk usage and plan a
 retention or cleanup policy if it becomes a problem.
-⚠️ Attempts can't be deleted (D6.8), so recording files are deleted only when the user account is deleted
+⚠️ The recording file must be deleted together with its attempt (D6.8) and with the user account
 (`post_delete` signals, as for videos in `cleanups.md`).
 
-### 🔴 D6.8 🆕 Deleting an attempt
-**Point:** the spec has `DELETE /api/dance-attempts/{id}/`. `times_played` is counted from attempts (D4.3) and should
-never go down.
+### 🟢 D6.8 🆕 Deleting an attempt
+**Point:** the spec has `DELETE /api/dance-attempts/{id}/`. It was first rejected so that `times_played` would never go down,
+then the decision was reversed (2026-11-10): users can delete their attempts.
 
-**Solution:** attempts are permanent history; the user can't delete them. They disappear only when the user account is deleted.
+**Solution:**
+- `DELETE /api/dance-attempts/{id}/` → 204; owner only, someone else's attempt → 404
+- **hard delete**: the row and the recording file are removed; `times_played` (D4.3), `best_score` and the score diffs
+  (D6.3) are recomputed from the attempts that are left
+- allowed in **any status**, also while `pending` / `processing`
 
-**Rejected:** ~~`DELETE /api/dance-attempts/{id}/`~~.
+⚠️ A background scoring task may still be running for a deleted attempt. It must check that the attempt still exists before
+writing the result and quietly stop if not (same pattern as `services.set_analysis_result` for videos).
+⚠️ Deleting the file while the task reads it: the task must also handle a missing file (end without an error, no `failed` write).
 
 ---
 
@@ -541,7 +550,7 @@ If a public landing page is wanted later, open `GET /api/library/` (`scope=all` 
 | no `VIDEO.times_played` column: computed as `COUNT(DANCE_ATTEMPT)`; add an index on `DANCE_ATTEMPT.reference_video_id` | D4.3 |
 | drop `VIDEO.likes_count` (+ its constraint, index and sync rule): computed as `COUNT(VIDEO_LIKE)` | D5.1 |
 | "The library" section: add the liked list (`/api/library/liked/`) | D5.2 |
-| DANCE_ATTEMPT can't be deleted by the user (only with the account) | D6.8 |
+| DANCE_ATTEMPT can be deleted by its owner (hard delete, recording file removed via `post_delete`) | D6.8 |
 | `DANCE_ATTEMPT.score` int 0–100 (was float) | D6.2 |
 | `DANCE_ATTEMPT.score_details` per segment / joint | D6.2 |
 | answer the open questions: upload (not live), own videos can be liked | D5.2, D6.1 |

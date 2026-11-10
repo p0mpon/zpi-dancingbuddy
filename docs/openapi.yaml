@@ -827,7 +827,6 @@ paths:
         (else 404) and analysed (else 409) (D6.5, D6.6). The recording (`mp4`, `mov` or `webm`, max 500 MB)
         is normalized, kept and scored in the background (D3.4, D6.7). The response comes right away with
         `status: pending`; poll `GET /api/dance-attempts/{attempt_id}/`.
-        Attempts can't be deleted (D6.8).
       security:
         - cookieAuth: []
           csrfHeader: []
@@ -878,6 +877,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DanceAttemptDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteDanceAttempt
+      tags: [Dance Attempts]
+      summary: Delete one of my attempts
+      description: |
+        Owner only. Permanently deletes the attempt and its recording (D6.8). Allowed in any status, also
+        while it is still being scored; the scoring then stops without a result.
+        `times_played` of the video, my `best_score` and the score diffs of my other attempts are
+        recomputed from the attempts that are left.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Attempt deleted.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1226,7 +1244,7 @@ components:
         times_played:
           type: integer
           minimum: 0
-          description: Number of dance attempts on this video, by everyone (D4.3).
+          description: Number of existing dance attempts on this video, by everyone; drops when an attempt is deleted (D4.3).
         best_score:
           type: integer
           minimum: 0
