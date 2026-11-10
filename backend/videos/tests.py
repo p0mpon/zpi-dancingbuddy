@@ -88,7 +88,13 @@ class VideoApiTests(APITestCase):
         response = self.client.get('/api/videos/')
         self.assertEqual(
             set(response.data[0]),
-            {'id', 'title', 'description', 'file_size', 'analysis_status', 'created_at'},
+            {
+                'id', 'title', 'description',
+                'song_author', 'song_title', 'difficulty',
+                'file_size', 'duration_seconds', 'analysis_status',
+                'visibility', 'published_at', 'likes_count',
+                'created_at', 'updated_at',
+            },
         )
 
     def test_retrieve_own(self):
@@ -197,26 +203,27 @@ class VideoApiTests(APITestCase):
         self.analysed.refresh_from_db()
         self.assertEqual(self.analysed.analysis_status, AnalysisStatus.DONE)
 
-    def test_replace_file_resets_and_reruns_analysis(self):
-        old_path = Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name)
-        with mock.patch('videos.services.start_analysis') as start_analysis:
-            with self.captureOnCommitCallbacks(execute=True):
-                response = self.client.patch(
-                    self.url(self.analysed), {'file': video_file('new.webm', b'new bytes!')}, format='multipart',
-                )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertNotIn('file', response.data)  # write-only
-        self.assertEqual(response.data['analysis_status'], 'pending')
+    # Disabled: the file can no longer be replaced via PATCH (it is 400 now). Kept in case that changes.
+    # def test_replace_file_resets_and_reruns_analysis(self):
+    #     old_path = Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name)
+    #     with mock.patch('videos.services.start_analysis') as start_analysis:
+    #         with self.captureOnCommitCallbacks(execute=True):
+    #             response = self.client.patch(
+    #                 self.url(self.analysed), {'file': video_file('new.webm', b'new bytes!')}, format='multipart',
+    #             )
+    #     self.assertEqual(response.status_code, status.HTTP_200_OK)
+    #     self.assertNotIn('file', response.data)  # write-only
+    #     self.assertEqual(response.data['analysis_status'], 'pending')
+    #
+    #     self.analysed.refresh_from_db()
+    #     self.assertEqual(self.analysed.file_size, len(b'new bytes!'))
+    #     self.assertIsNone(self.analysed.json_analysis)
+    #     self.assertTrue(self.analysed.path_to_resource.name.endswith('.webm'))
+    #     self.assertTrue(Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name).is_file())
+    #     self.assertFalse(old_path.exists())
+    #     start_analysis.assert_called_once_with(video=self.analysed)
 
-        self.analysed.refresh_from_db()
-        self.assertEqual(self.analysed.file_size, len(b'new bytes!'))
-        self.assertIsNone(self.analysed.json_analysis)
-        self.assertTrue(self.analysed.path_to_resource.name.endswith('.webm'))
-        self.assertTrue(Path(settings.MEDIA_ROOT, self.analysed.path_to_resource.name).is_file())
-        self.assertFalse(old_path.exists())
-        start_analysis.assert_called_once_with(video=self.analysed)
-
-    def test_replace_file_rejects_non_video(self):
+    def test_patch_with_file_is_400(self):
         response = self.client.patch(
             self.url(self.analysed),
             {'file': SimpleUploadedFile('notes.txt', b'hello', content_type='text/plain')},

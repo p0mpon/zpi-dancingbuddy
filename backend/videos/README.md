@@ -159,16 +159,16 @@ Each layer has one job. The rule that matters most: **every write goes through `
 
 ### Modules
 
-| File | What's in it |
-|---|---|
-| `models.py` | `Video` (the VIDEO table from `db/diagram/v1.md`), `AnalysisStatus` choices, `video_upload_path()` (where files are stored), constraints: `file_size >= 0`, status is one of the four values |
+| File | What's in it                                                                                                                                                                                                                                          |
+|---|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `models.py` | `Video` (the VIDEO table from `db/diagram/v2.md`), `AnalysisStatus` choices, `video_upload_path()` (where files are stored), constraints: `file_size >= 0`, status is one of the four values                                                          |
 | `serializers.py` | `VideoSerializer` (output + PATCH; a `ModelSerializer`, plus a write-only `file`), `VideoUploadSerializer` (POST; a plain `Serializer`, because the request's `file` isn't a model field), file checks `validate_filename()` / `validate_file_size()` |
-| `views.py` | `VideoViewSet`: one method per endpoint (`list`, `create`, `retrieve`, `partial_update`, `destroy`, and the `stream`, `thumbnail`, `analysis` actions) |
-| `services.py` | `upload_video`, `update_video`, `delete_video`, `start_analysis` (queues the task), `set_analysis_result` (status/result written by the task) |
-| `tasks.py` | `analyse_video` (Celery task), `run_analysis()`: **TODO**, the entry point of the real analysis |
-| `streaming.py` | `range_file_response()` (200 / 206 / 416), `parse_range_header()` (pure, unit-tested), `read_chunks()` (64 KB at a time) |
-| `admin.py` | `Video` in the Django admin (`/admin/`), `json_analysis` read-only |
-| `tests.py` | API tests, task tests, Range parser tests |
+| `views.py` | `VideoViewSet`: one method per endpoint (`list`, `create`, `retrieve`, `partial_update`, `destroy`, and the `stream`, `thumbnail`, `analysis` actions)                                                                                                |
+| `services.py` | `upload_video`, `update_video`, `delete_video`, `start_analysis` (queues the task), `set_analysis_result` (status/result written by the task)                                                                                                         |
+| `tasks.py` | `analyse_video` (Celery task), `run_analysis()`: **TODO**, the entry point of the real analysis                                                                                                                                                       |
+| `streaming.py` | `range_file_response()` (200 / 206 / 416), `parse_range_header()` (pure, unit-tested), `read_chunks()` (64 KB at a time)                                                                                                                              |
+| `admin.py` | `Video` in the Django admin (`/admin/`), `json_analysis` read-only                                                                                                                                                                                    |
+| `tests.py` | API tests, task tests, Range parser tests                                                                                                                                                                                                             |
 
 Outside the app:
 

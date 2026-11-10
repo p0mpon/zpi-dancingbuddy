@@ -26,20 +26,19 @@ def run_analysis(file_path):
 
 @shared_task
 def analyse_video(video_id):
-    """Analyse one video. Queued by services.start_analysis() after an upload or a new file."""
+    """Analyse one video. Queued by services.start_analysis() after an upload."""
     video = Video.objects.filter(pk=video_id).first()
     if video is None:  # deleted before the worker got to it
         return
 
-    # Remember which file is analysed: if PATCH replaces it meanwhile, every write
-    # below is skipped, so a result for the old file never lands on the new one.
+    # Remember which file is analysed
     file_name = video.path_to_resource.name
     started = services.set_analysis_result(
         video_id=video_id, file_name=file_name, status=AnalysisStatus.PROCESSING,
     )
     if not started:
-        # Not an error: deleted or given a new file (which queued its own task) in the meantime.
-        logger.info('Analysis of video %s skipped: deleted or file replaced', video_id)
+        # Not an error: deleted meanwhile.
+        logger.info('Analysis of video %s skipped: deleted', video_id)
         return
 
     try:
