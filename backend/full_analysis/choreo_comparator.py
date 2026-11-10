@@ -1,44 +1,69 @@
 from full_analysis.choreo_data_model import ChoreoFrame, ScoredFrame
 from video_analysis.video_frame_model import Frame
 
+# adjust these after tests
 
+# fixed thresholds - things that are not relative to the base frame value
 TIMESTAMP_WINDOW_THRESHOLD = 0.2  # seconds
 TIMESTAMP_TOLERANCE_THRESHOLD = 0.07  # seconds
 
-HIP_HEIGHT_TOLERANCE_THRESHOLD = 0.1  # meters
-ANGLE_TOLERANCE_THRESHOLD = 45.0  # degrees
-# adjust these after tests
-VELOCITY_TOLERANCE_THRESHOLD = 10.0  # degrees per second
-ACCELERATION_TOLERANCE_THRESHOLD = 50.0  # degrees per second squared
+HIP_HEIGHT_TOLERANCE_THRESHOLD = 0.15  # meters
+HIP_HEIGHT_GRACE_THRESHOLD = 0.05  # meters
 
+ANGLE_GRACE_THRESHOLD = 15.0  # degrees
+ANGLE_TOLERANCE_THRESHOLD = 45.0  # degrees
+
+# relative thresholds - things that are relative to the base frame value
+VELOCITY_GRACE_THRESHOLD_PERCENT = 5.0  # percent (degrees per second)
+VELOCITY_TOLERANCE_THRESHOLD_PERCENT = 20.0  # percent (degrees per second)
+
+ACCELERATION_GRACE_THRESHOLD_PERCENT = 10.0  # percent (degrees per second squared)
+ACCELERATION_TOLERANCE_THRESHOLD_PERCENT = 30.0  # percent (degrees per second squared)
+
+# weights for the final score calculation
 JOINTS_SCORE_WEIGHT = 0.85
 GLOBAL_POSITION_SCORE_WEIGHT = 0.15
 
-def _get_angle_diff(a: float, b: float) -> float:
-    """
-    Returns the shortest circular distance between two angles in degrees.
-    Args:
-        a (float): The first angle in degrees.
-        b (float): The second angle in degrees.
-    Returns:
-        float: The shortest circular distance between the two angles in degrees.
-    """
-    diff = abs(a - b) % 360.0
-    return diff if diff <= 180.0 else 360.0 - diff
 
-def _get_similarity(diff: float, tolerance: float) -> float:
-    """
-    Converts a value difference into a normalized similarity score.
 
-    A zero difference scores 1.0. Differences at or above the tolerance
-    score 0.0, with a linear score between those bounds.
+def _get_fixed_similarity(diff: float, grace: float, tolerance: float) -> float:
+    """
+    Converts a value difference into a normalized similarity score for fixed thresholds.
+
+    Differences within the grace threshold score 1.0. Differences at or
+    above the tolerance score 0.0, with a linear score between those bounds.
     Args:
         diff (float): The difference between two values.
-        tolerance (float): The tolerance threshold for the difference.
+        grace (float): The fixed grace threshold for the difference.
+        tolerance (float): The fixed tolerance threshold for the difference.
     Returns:
         float: The normalized similarity score.
     """
-    return max(0.0, 1.0 - abs(diff) / tolerance)
+    difference = abs(diff)
+    if difference <= grace:
+        return 1.0
+    if difference >= tolerance:
+        return 0.0
+
+    return (tolerance - difference) / (tolerance - grace)
+
+def _get_relative_similarity(diff: float, base_value: float, grace_percent: float, tolerance_percent: float) -> float:
+    """
+    Converts a value difference into a normalized similarity score for relative thresholds.
+
+    Differences within the grace threshold score 1.0. Differences at or
+    above the tolerance score 0.0, with a linear score between those bounds.
+    Args:
+        diff (float): The difference between two values.
+        base_value (float): The base value to calculate relative thresholds.
+        grace_percent (float): The grace threshold as a percentage of the base value.
+        tolerance_percent (float): The tolerance threshold as a percentage of the base value.
+    Returns:
+        float: The normalized similarity score.
+    """
+    grace = abs(base_value) * (grace_percent / 100.0)
+    tolerance = abs(base_value) * (tolerance_percent / 100.0)
+    return _get_fixed_similarity(diff, grace, tolerance)
 
 def _get_timestamp_weight(timestamp_difference: float) -> float:
     """
@@ -75,18 +100,20 @@ def _compare_frames(base_frame: ChoreoFrame, compare_frame: Frame) -> tuple[floa
     global_position_scores: list[float] = []
     if compare_frame.hip_height is not None:
         global_position_scores.append(
-            _get_similarity(
+            _get_fixed_similarity(
                 base_frame.global_position.hip_y - compare_frame.hip_height,
+                HIP_HEIGHT_GRACE_THRESHOLD,
                 HIP_HEIGHT_TOLERANCE_THRESHOLD,
             )
         )
     if compare_frame.hip_rotation is not None:
         global_position_scores.append(
-            _get_similarity(
-                _get_angle_diff(
-                    base_frame.global_position.body_rotation_deg,
+            _get_fixed_similarity(
+                abs(
+                    base_frame.global_position.body_rotation_deg -
                     compare_frame.hip_rotation,
                 ),
+                ANGLE_GRACE_THRESHOLD,
                 ANGLE_TOLERANCE_THRESHOLD,
             )
         )
@@ -111,28 +138,33 @@ def _compare_frames(base_frame: ChoreoFrame, compare_frame: Frame) -> tuple[floa
         score = 0.0
         if compare_joint.angle is not None:
             score += (
-                _get_similarity(
-                    _get_angle_diff(base_joint.angle, compare_joint.angle),
+                _get_fixed_similarity(
+                    abs(base_joint.angle - compare_joint.angle),
+                    ANGLE_GRACE_THRESHOLD,
                     ANGLE_TOLERANCE_THRESHOLD,
                 )
                 * base_joint.dynamic_weights.angle_weight
             )
         if compare_joint.angular_velocity is not None:
             score += (
-                _get_similarity(
+                _get_relative_similarity(
                     base_joint.velocity_deg_per_sec
                     - compare_joint.angular_velocity,
-                    VELOCITY_TOLERANCE_THRESHOLD,
+                    base_joint.velocity_deg_per_sec,
+                    VELOCITY_GRACE_THRESHOLD_PERCENT,
+                    VELOCITY_TOLERANCE_THRESHOLD_PERCENT,
                 )
                 * base_joint.dynamic_weights.kinematic_weight
                 * 0.5
             )
         if compare_joint.angular_acceleration is not None:
             score += (
-                _get_similarity(
+                _get_relative_similarity(
                     base_joint.acceleration_deg_per_sec2
                     - compare_joint.angular_acceleration,
-                    ACCELERATION_TOLERANCE_THRESHOLD,
+                    base_joint.acceleration_deg_per_sec2,
+                    ACCELERATION_GRACE_THRESHOLD_PERCENT,
+                    ACCELERATION_TOLERANCE_THRESHOLD_PERCENT,
                 )
                 * base_joint.dynamic_weights.kinematic_weight
                 * 0.5
