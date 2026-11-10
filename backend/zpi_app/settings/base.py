@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     # Local
     'accounts',
     'videos',
+    'dance_attempts',
 ]
 
 MIDDLEWARE = [
