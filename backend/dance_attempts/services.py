@@ -15,10 +15,9 @@ def create_attempt(
     Returns the created DanceAttempt object.
     Raises PermissionDenied if the user is not allowed to attempt the video.
     """
-    # NOTE: Commented out for now as Video model does not have is_public field yet
     # Enforce rule: Video must be public or belong to the user
-    # if not reference_video.is_public and reference_video.owner != user:
-    #     raise PermissionDenied("You cannot attempt a private video that isn't yours.")
+    if not reference_video.is_public and reference_video.owner != user:
+        raise PermissionDenied("You cannot attempt a private video that isn't yours.")
         
     attempt = DanceAttempt.objects.create(
         user=user,
