@@ -1,14 +1,61 @@
-from typing import Optional, Any
-from django.core.exceptions import PermissionDenied
-from django.core.files import File
 from dance_attempts.models import DanceAttempt
+from django.core.files import File
+from django.db import transaction
+from django.db.models import F, OuterRef, Subquery, Q
+from django.http import Http404
+from django.shortcuts import get_object_or_404
+from typing import Optional
 from videos.models import AnalysisStatus, Video
+
+
+class VideoNotReadyError(Exception):
+    """Raised when a video is not ready for analysis."""
+
+
+def start_attempt_analysis(*, attempt):
+    """
+    Queues the scoring analysis (run by Celery).
+    Always called through transaction.on_commit.
+    """
+    from .tasks import analyse_attempt
+    analyse_attempt.delay(attempt.pk)
+
+
+def get_attempts_for_user_with_score_diffs(user):
+    """
+    Service method to fetch attempts with pre-calculated score diffs.
+    """
+    # Subquery to find the previous score
+    previous_score_subquery = DanceAttempt.objects.filter(
+        user=OuterRef('user'),
+        reference_video=OuterRef('reference_video'),
+        created_at__lt=OuterRef('created_at'),
+        score__isnull=False
+    ).order_by('-created_at').values('score')[:1]
+
+    # Subquery to find the best score so far
+    best_score_subquery = DanceAttempt.objects.filter(
+        user=OuterRef('user'),
+        reference_video=OuterRef('reference_video'),
+        created_at__lt=OuterRef('created_at'),
+        score__isnull=False
+    ).order_by('-score').values('score')[:1]
+
+    return DanceAttempt.objects.filter(user=user).annotate(
+        _prev_score=Subquery(previous_score_subquery),
+        _best_score=Subquery(best_score_subquery),
+        
+        score_diff_previous=F('score') - F('_prev_score'),
+        score_diff_best=F('score') - F('_best_score')
+    )
+
 
 def create_attempt(
         *, 
         user, 
-        reference_video: Video, 
-        recording: Optional[File] = None
+        reference_video_id: int, 
+        recording: Optional[File] = None,
+        mediapipe_data: Optional[list] = None
     ) -> DanceAttempt:
     """
     Creates a DanceAttempt instance for the given user and reference video.
@@ -16,40 +63,52 @@ def create_attempt(
     Raises PermissionDenied if the user is not allowed to attempt the video.
     """
     # Enforce rule: Video must be public or belong to the user
-    if not reference_video.is_public and reference_video.owner != user:
-        raise PermissionDenied("You cannot attempt a private video that isn't yours.")
-        
-    attempt = DanceAttempt.objects.create(
-        user=user,
-        reference_video=reference_video,
-        reference_title=reference_video.title, # Copy title on creation
-        recording=recording,
-        status=AnalysisStatus.PENDING
+    reference_video = get_object_or_404(
+        Video, 
+        id=reference_video_id
     )
 
+    # Enforce rule: Video must be public or belong to the user
+    if not reference_video.is_public and reference_video.owner != user:
+        raise Http404("The video you want to attempt does not exist.")
+
+    if reference_video.analysis_status != AnalysisStatus.DONE:
+        raise VideoNotReadyError("The reference video is not analysed yet.")
+    
+    with transaction.atomic():
+        attempt = DanceAttempt.objects.create(
+            user=user,
+            reference_video=reference_video,
+            reference_title=reference_video.title, # Copy title on creation
+            recording=recording,
+            json_analysis=mediapipe_data,
+            status=AnalysisStatus.PENDING
+        )
+
+        transaction.on_commit(
+            lambda: start_attempt_analysis(attempt=attempt),
+            robust=True
+        )
+
     return attempt
+
 
 def set_attempt_result(
         *, 
         attempt_id: int, 
-        file_name: str, 
         status: AnalysisStatus, 
         score: Optional[int] = None, 
-        json_analysis: Optional[dict] = None, 
         score_details: Optional[dict] = None
     ):
     """
     Updates the DanceAttempt after score analysis is complete.
     Returns True if the update was successful, False otherwise.
     """
-    # Only update if the id matches and the recording matches the file_name
     updated_count = DanceAttempt.objects.filter(
-        id=attempt_id,
-        recording=file_name
+        id=attempt_id
     ).update(
         status=status,
         score=score,
-        json_analysis=json_analysis,
         score_details=score_details
     )
 
