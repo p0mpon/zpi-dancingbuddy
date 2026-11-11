@@ -3,7 +3,7 @@
 Base: `docs/openapi.yaml` on `chore/DAN-146-api-specification` (with DAN-101 merged).
 Compared with: `backend/db/diagram/v2.md` and the current backend code.
 The spec was rewritten from this log on 2026-11-09; the log is the source of truth for why.
-Last updated: 2026-11-09.
+Last updated: 2026-11-11.
 
 ## Legend
 
@@ -115,12 +115,20 @@ v2 has no roles.
 ### 🟡 D1.1 🆕 Login identifier
 **Point:** the spec signs in with a separate `login` field; v2 has `email`. The team doesn't want email verification / SMTP.
 
-**Solution:** private `login` (unique, used only to sign in) + public `username` (unique, shown everywhere). No email.
+**Solution:** private `username` (unique, used only to sign in) + public `nickname` (unique, shown everywhere). No email.
 
-**Change:** ~~v2 `USER.email`~~ → **`USER.login`**; password reset without email → **recovery code (D1.7)**.
+**Change:** ~~v2 `USER.email`~~ → **`USER.username` as the only sign-in field**; password reset without email → **recovery code (D1.7)**.
+
+**Renamed (2026-11-11):** ~~private `login` + public `username`~~ → **private `username` + public `nickname`**.
+Django's `AbstractUser` already uses `username` to sign in (`USERNAME_FIELD`, `authenticate()`, `createsuperuser`, the admin),
+so keeping that meaning needs no custom user manager or admin forms. The public name moved to a new field, `nickname`.
+Django's `email`, `first_name` and `last_name` columns stay in the table, always empty and never in the API.
+
+⚠️ Code that shows `user.username` would now show the private sign-in name. Show `nickname` everywhere, override
+`User.__str__` to return the nickname, and write author fields as `source='owner.nickname'`.
 
 **Rejected:** ~~an unverified email used as a "secret phrase" for reset~~: emails are often public or guessable, so
-anyone who knows login + email could take over the account.
+anyone who knows the username + email could take over the account.
 
 ### 🟢 D1.2 🆕 Rate limiting
 **Point:** the spec lists 429 on login/register.
@@ -158,7 +166,7 @@ the `SameSite` cookie settings, or requests fail with 403.
 ### 🟡 D1.6 🆕 Password rules
 **Point:** the spec has min 12 / **max 32** and validates lengths on the login request too.
 
-**Solution:** Django `AUTH_PASSWORD_VALIDATORS` (similar to username/login, min length, common passwords, only digits),
+**Solution:** Django `AUTH_PASSWORD_VALIDATORS` (similar to username/nickname, min length, common passwords, only digits),
 max 128 → 400 field errors. The login request has no rules; wrong credentials → 401.
 
 **Change:** ~~length 12–32, also checked on login~~ → **Django validators, max 128, no rules on login**.
@@ -169,9 +177,9 @@ max 128 → 400 field errors. The login request has no rules; wrong credentials 
 **Solution:** a one-time **recovery code**, like 2FA backup codes:
 - on register the 201 response contains `recovery_code` **once**, next to `CurrentUser`; the frontend makes the user save it
 - the code is random (e.g. 16 characters, ~80 bits) and stored only as a hash (`make_password`)
-- `POST /api/auth/password-reset/` `{login, recovery_code, new_password}` → 200 `{recovery_code}` (a **new** code; the old one is used up)
+- `POST /api/auth/password-reset/` `{username, recovery_code, new_password}` → 200 `{recovery_code}` (a **new** code; the old one is used up)
 - `POST /api/users/me/recovery-code/` `{password}` → 200 `{recovery_code}`: a logged-in user generates a new code
-- a wrong login or code gives the same 400 `{detail: "Invalid login or recovery code."}`, so it doesn't reveal which logins exist
+- a wrong username or code gives the same 400 `{detail: "Invalid username or recovery code."}`, so it doesn't reveal which usernames exist
 - rate-limited like login (D1.2)
 
 ⚠️ A user who loses both the password and the recovery code can only be helped by an admin.
@@ -185,35 +193,36 @@ max 128 → 400 field errors. The login request has no rules; wrong credentials 
 ### 🟡 D2.1 🗂️ Profile fields
 **Point:** the spec has `username`, `login`, `avatarUrl`; v2 has `username`, `email`, `display_name`, `avatar`, `bio`.
 
-**Solution:** `username` (public, also the display name), `login` (private), `avatar_url` (nullable), `bio` (max 300, may be empty).
+**Solution:** `username` (private, sign-in only), `nickname` (public, unique, the display name), `avatar_url` (nullable), `bio` (max 300, may be empty).
 
-**Change:** ~~`display_name`~~ (same as username) and ~~`email`~~ (D1.1) → **removed**; **`bio` added to the spec**.
+**Change:** ~~`display_name`~~ → **`nickname`** (unique, required); ~~`email`~~ (D1.1) → **not in the API**; **`bio` added to the spec**.
+(2026-11-11: was ~~public `username` + private `login`~~, see D1.1.)
 
 ### 🟢 D2.2 ➕ Public profile
 **Point:** videos show the author, but there was no page for the author.
 
-**Solution:** `GET /api/users/{username}/` → `{username, avatar_url, bio, public_videos_count}` (never `login`);
-their videos via `GET /api/library/?author=<username>`; unknown username → 404.
+**Solution:** `GET /api/users/{nickname}/` → `{nickname, avatar_url, bio, public_videos_count}` (never `username`);
+their videos via `GET /api/library/?author=<nickname>`; unknown nickname → 404.
 
-⚠️ The username `me` must be reserved (see D2.3).
+⚠️ The nickname `me` must be reserved (see D2.3).
 
 ### 🟡 D2.3 🆕 `/me` endpoints
 **Point:** the spec uses verb-style URLs: `/me/edit-login/`, `/me/edit-password/`, `/me/delete/`.
 
 **Solution:**
-- `GET /api/users/me/`, `PATCH /api/users/me/` (username, bio, avatar; multipart)
-- `PATCH /api/users/me/login/` (`login` + `password`)
+- `GET /api/users/me/`, `PATCH /api/users/me/` (nickname, bio, avatar; multipart)
+- `PATCH /api/users/me/username/` (`username` + `password`)
 - `POST /api/users/me/password/` (`old_password`, `new_password`) → 204
 - `DELETE /api/users/me/` (`password` in the body) → 204
 - `DELETE /api/users/me/avatar/` → 204
 
 **Change:** ~~`edit-login/`, `edit-password/` (returned the user), `delete/`~~ → **resource URLs above**.
 
-⚠️ `/api/users/me/` and `/api/users/{username}/` share a path, so the username `me` must be rejected on register and rename.
+⚠️ `/api/users/me/` and `/api/users/{nickname}/` share a path, so the nickname `me` must be rejected on register and rename.
 ⚠️ After a password change call `update_session_auth_hash`, otherwise the user is logged out.
 ⚠️ `DELETE /api/users/me/` carries the password in the request body. That's allowed, but OpenAPI 3.0 tools
 (Swagger UI) and some proxies ignore DELETE bodies. If that becomes a problem, use `POST /api/users/me/delete/` instead.
-A wrong password confirmation (login change, password change, account delete, new recovery code) → 403 `{detail}`.
+A wrong password confirmation (username change, password change, account delete, new recovery code) → 403 `{detail}`.
 
 ### 🟡 D2.4 🗂️ Avatar rules
 **Point:** the spec has `avatarUrl` as required, with no size limit and no way to remove it; v2 says null = default avatar.
@@ -323,10 +332,10 @@ no difficulty. Unpublishing clears `published_at` and keeps the likes.
 **Point:** the spec has separate filters per field, including song fields that users type freely (not validated).
 
 **Solution:** `GET /api/library/` and `GET /api/library/{id}/`:
-- `?search=`: case-insensitive partial match over title, song title, song author, author username
-- filters only on validated values: `?difficulty=`, `?author=` (exact username)
+- `?search=`: case-insensitive partial match over title, song title, song author, author nickname
+- filters only on validated values: `?difficulty=`, `?author=` (exact nickname)
 - `?ordering=newest|likes|played` (default `newest`); paginated (D7.3)
-- library DTO = public fields + `author_username`, `author_avatar_url`, `liked_by_me`, `best_score`, `times_played`
+- library DTO = public fields + `author_nickname`, `author_avatar_url`, `liked_by_me`, `best_score`, `times_played`
 
 **Change:** ~~`title`, `songTitle`, `songArtist`, `authorUsername` filters~~ → **one `search` + `difficulty` + `author`**.
 More filters (e.g. dance style, BPM from audio analysis) can be added later as optional params without breaking the contract.
@@ -494,7 +503,7 @@ writing the result and quietly stop if not (same pattern as `services.set_analys
 
 **Solution:** snake_case everywhere (JSON keys and query params), which is the DRF default and needs no extra library.
 
-**Change:** ~~camelCase fields~~ → **snake_case** (`authorUsername` → `author_username`, …).
+**Change:** ~~camelCase fields~~ → **snake_case** (`authorUsername` → `author_nickname`, …).
 
 ⚠️ Check the frontend (`frontend/src`) for camelCase keys when the spec is applied.
 
@@ -526,7 +535,7 @@ writing the result and quietly stop if not (same pattern as `services.set_analys
 **Solution:** DRF default: `{detail}` for general errors and `{field: [messages]}` for validation; 401 on every secured
 operation; `/stream/` documents 206 + `Content-Range` and 416.
 
-**Change:** ~~409 "username or login already exists"~~ → **400 field error** (DRF's unique validators do that by default).
+**Change:** ~~409 "username or nickname already exists"~~ → **400 field error** (DRF's unique validators do that by default).
 
 ### ⚪ D7.6 ➕ Access without logging in
 **Point:** the rewritten spec requires a session on every endpoint except register, login, CSRF and password reset.
@@ -542,10 +551,10 @@ If a public landing page is wanted later, open `GET /api/library/` (`scope=all` 
 
 | Change | From |
 |---|---|
-| `USER.email` → `USER.login` (unique) | D1.1 |
+| `USER.username` is private, sign-in only; `USER.email` unused (always empty, not in the API) | D1.1 |
 | add `USER.recovery_code_hash` (string, hashed one-time code) | D1.7 |
 | "The library" section: library = public + my own videos (`scope=all|mine`), not only public | D0.1 |
-| drop `USER.display_name` | D2.1 |
+| `USER.display_name` → `USER.nickname` (public, unique, required, max 32) | D2.1 |
 | keep `USER.avatar` (convention); rename the code field `User.thumbnail` → `avatar` later | D2.5 |
 | no `VIDEO.times_played` column: computed as `COUNT(DANCE_ATTEMPT)`; add an index on `DANCE_ATTEMPT.reference_video_id` | D4.3 |
 | drop `VIDEO.likes_count` (+ its constraint, index and sync rule): computed as `COUNT(VIDEO_LIKE)` | D5.1 |
