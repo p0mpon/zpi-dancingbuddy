@@ -842,7 +842,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DanceAttemptDetails'
+                $ref: '#/components/schemas/DanceAttempt'
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -918,7 +918,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DanceAttemptDetails'
+                $ref: '#/components/schemas/DanceAttempt'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':

@@ -46,18 +46,21 @@ class AnalyseAttemptTaskTests(TestCase):
         mock_run_score_analysis.assert_called_once_with({'some': 'data'})
 
     @patch('dance_attempts.tasks.run_score_analysis')
-    def test_analyse_attempt_handles_ml_failure(self, mock_run_score_analysis):
+    def test_analyse_attempt_handles_failure(self, mock_run_score_analysis):
         # GIVEN the run_score_analysis function crashes for some reason
         mock_run_score_analysis.side_effect = Exception("Crashed!")
 
         # WHEN the Celery worker runs the task
-        analyse_attempt(self.attempt.pk)
+        with self.assertLogs('dance_attempts.tasks', level='ERROR') as captured_logs:
+            analyse_attempt(self.attempt.pk)
 
         # THEN the attempt should be marked as FAILED
         self.attempt.refresh_from_db()
         self.assertEqual(self.attempt.status, AnalysisStatus.FAILED)
         self.assertIsNone(self.attempt.score)
         self.assertIsNone(self.attempt.score_details)
+        # AND correct error message should be logged
+        self.assertIn("Analysis of attempt", captured_logs.output[0])
 
     @patch('dance_attempts.tasks.run_score_analysis')
     def test_analyse_attempt_aborts_if_deleted(self, mock_run_score_analysis):
