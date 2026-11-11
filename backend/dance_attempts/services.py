@@ -11,6 +11,9 @@ from videos.models import AnalysisStatus, Video
 class VideoNotReadyError(Exception):
     """Raised when a video is not ready for analysis."""
 
+class AttemptNotFailedError(Exception):
+    """Raised when trying to reanalyze an attempt that hasn't failed."""
+
 
 def start_attempt_analysis(*, attempt):
     """
@@ -105,7 +108,7 @@ def set_attempt_result(
         status: AnalysisStatus, 
         score: Optional[int] = None, 
         score_details: Optional[dict] = None
-    ):
+    ) -> bool:
     """
     Updates the DanceAttempt after score analysis is complete.
     Returns True if the update was successful, False otherwise.
@@ -129,3 +132,25 @@ def delete_attempt(*, attempt: DanceAttempt):
         attempt.recording.delete(save=False)
         
     attempt.delete()
+
+
+def reanalyze_attempt(*, attempt: DanceAttempt) -> DanceAttempt:
+    """
+    Resets a failed attempt to PENDING and queues it for analysis again.
+    """
+    if attempt.status != AnalysisStatus.FAILED:
+        raise AttemptNotFailedError("Only failed attempts can be reanalyzed.")
+        
+    with transaction.atomic():
+        attempt.status = AnalysisStatus.PENDING
+        attempt.score = None
+        attempt.score_details = None
+        
+        attempt.save(update_fields=['status', 'score', 'score_details'])
+
+        transaction.on_commit(
+            lambda: start_attempt_analysis(attempt=attempt), 
+            robust=True
+        )
+
+    return attempt

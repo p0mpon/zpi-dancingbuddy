@@ -4,7 +4,10 @@ Dance attempts API. Routes (registered in zpi_app/urls.py):
     GET     /api/attempts/                     list the current user's attempts
     GET     /api/attempts/{id}/                retrieve a single attempt
     POST    /api/attempts/                     create a new attempt (multipart upload)
+    DELETE  /api/attempts/{id}/                delete an attempt
+    POST    /api/attempts/{id}/reanalyze/      reanalyze an existing attempt (recalculates score and score_details)
 """
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import viewsets, mixins, status
 
@@ -81,3 +84,16 @@ class DanceAttemptViewSet(
         Overrides the default mixin behavior to route deletion through the service.
         """
         services.delete_attempt(attempt=instance)
+
+    @action(detail=True, methods=['post'])
+    def reanalyze(self, request, pk=None):
+        """POST /api/dance-attempts/{id}/reanalyze/"""
+        attempt = self.get_object() 
+        
+        try:
+            attempt = services.reanalyze_attempt(attempt=attempt)
+        except services.AttemptNotFailedError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+            
+        out_serializer = self.get_serializer(attempt)
+        return Response(out_serializer.data, status=status.HTTP_202_ACCEPTED)
