@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import DanceAttempt
+from core.validators import validate_video_file
 
 
 class DanceAttemptSerializer(serializers.ModelSerializer):
@@ -35,3 +36,15 @@ class DanceAttemptDetailSerializer(DanceAttemptSerializer):
             'score_details'
         )
         read_only_fields = fields
+
+
+class DanceAttemptUploadSerializer(serializers.Serializer):
+    """Body of POST /api/dance-attempts/ (multipart/form-data)."""
+
+    reference_video_id = serializers.IntegerField(min_value=1)
+    recording = serializers.FileField()
+    mediapipe_data = serializers.JSONField()
+
+    def validate_recording(self, recording):
+        """Validate the uploaded recording file."""
+        return validate_video_file(recording)

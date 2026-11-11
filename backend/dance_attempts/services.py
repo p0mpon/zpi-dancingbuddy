@@ -21,9 +21,10 @@ def start_attempt_analysis(*, attempt):
     analyse_attempt.delay(attempt.pk)
 
 
-def get_attempts_for_user_with_score_diffs(user):
+def get_attempts_for_user_with_score_diffs(user, video_id=None):
     """
     Service method to fetch attempts with pre-calculated score diffs.
+    Optionally filters by reference video id if provided.
     """
     # Subquery to find the previous score
     previous_score_subquery = DanceAttempt.objects.filter(
@@ -41,7 +42,12 @@ def get_attempts_for_user_with_score_diffs(user):
         score__isnull=False
     ).order_by('-score').values('score')[:1]
 
-    return DanceAttempt.objects.filter(user=user).annotate(
+    queryset = DanceAttempt.objects.filter(user=user)
+
+    if video_id is not None:
+        queryset = queryset.filter(reference_video_id=video_id)
+
+    return queryset.annotate(
         _prev_score=Subquery(previous_score_subquery),
         _best_score=Subquery(best_score_subquery),
         
