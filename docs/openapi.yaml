@@ -1,0 +1,1519 @@
+openapi: 3.0.3
+info:
+  title: OnBeat API
+  version: 1.0.0
+  description: |
+    API for uploading, browsing, liking and dancing to choreography videos.
+
+    Decisions behind this contract: `docs/api-decisions.md` (IDs like D4.2 in descriptions point there).
+
+    ## Conventions
+    - JSON keys and query params are **snake_case**; every object has an `id` (D7.1, D7.2).
+    - Lists are paginated with `limit` / `offset` and return `{count, next, previous, results}` (D7.3).
+    - Errors: `{detail}` for general errors, `{field: [messages]}` for validation errors (D7.5).
+
+    ## Authentication
+    Session cookie (`sessionid`) + CSRF (D1.4):
+    1. `GET /api/auth/csrf/` sets the `csrftoken` cookie.
+    2. Every POST / PUT / PATCH / DELETE sends the cookie value in the `X-CSRFToken` header.
+    3. Login rotates the token: read the cookie again after logging in.
+
+    ## Video processing
+    Uploaded files (`mp4`, `mov`, `webm`, max 500 MB) are **normalized** on the server to H.264/AAC MP4,
+    constant 30 fps, max 1080p, and then analysed in the background (D3.4). Normalization and thumbnail
+    generation are separate backend tasks; the API only exposes their result (`analysis_status`, `thumbnail_url`).
+
+servers:
+  - url: /
+
+security:
+  - cookieAuth: []
+
+tags:
+  - name: Auth
+    description: Registration, login, CSRF and password reset
+  - name: Users
+    description: The current user's account and public profiles
+  - name: Videos
+    description: Managing my own uploaded videos
+  - name: Library
+    description: Browsing videos (public + mine) and likes
+  - name: Dance Attempts
+    description: Dancing to a video and the attempt history
+
+paths:
+  # ---------------------------------------------------------------- Auth
+  /api/auth/csrf/:
+    get:
+      operationId: getCsrfCookie
+      tags: [Auth]
+      summary: Get a CSRF cookie
+      description: Sets the `csrftoken` cookie needed for every unsafe request (D1.4).
+      security: []
+      responses:
+        '204':
+          description: Cookie set.
+          headers:
+            Set-Cookie:
+              description: '`csrftoken=...`'
+              schema:
+                type: string
+
+  /api/auth/register/:
+    post:
+      operationId: register
+      tags: [Auth]
+      summary: Register a new user
+      description: |
+        Creates an account and logs the user in (sets the session cookie) (D1.5).
+        The response contains the **recovery code once**. The frontend must show it and ask the user
+        to save it; it is the only way to reset a forgotten password (D1.7).
+        The username `me` is reserved.
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created and logged in.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Validation failed (including username or login already taken, weak password).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/auth/login/:
+    post:
+      operationId: login
+      tags: [Auth]
+      summary: Log in
+      description: Signs in with the private `login` (not the public username) (D1.1).
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in; the session cookie is set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Wrong login or password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/auth/logout/:
+    post:
+      operationId: logout
+      tags: [Auth]
+      summary: Log out
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Logged out.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/password-reset/:
+    post:
+      operationId: resetPassword
+      tags: [Auth]
+      summary: Reset a forgotten password with the recovery code
+      description: |
+        Sets a new password using the login and the recovery code (D1.7). The used code stops working and
+        a **new** code is returned (show it once). Other sessions of the user are logged out.
+        A wrong login and a wrong code give the same error.
+      security:
+        - csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '200':
+          description: Password changed; a new recovery code is issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryCodeResponse'
+        '400':
+          description: Invalid login or recovery code, or the new password fails validation.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DetailError'
+                  - $ref: '#/components/schemas/ValidationError'
+              example:
+                detail: Invalid login or recovery code.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ---------------------------------------------------------------- Users
+  /api/users/me/:
+    get:
+      operationId: getCurrentUser
+      tags: [Users]
+      summary: Get the current user
+      responses:
+        '200':
+          description: The current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: updateCurrentUser
+      tags: [Users]
+      summary: Update the current user's profile
+      description: Changes the username, bio and/or avatar (D2.3). Send at least one field.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '400':
+          description: Validation failed (including username already taken or reserved, avatar too large).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteCurrentUser
+      tags: [Users]
+      summary: Delete the current user's account
+      description: |
+        Deletes the account with all its videos, likes and dance attempts (and their files).
+        Requires the password in the body.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordConfirmRequest'
+      responses:
+        '204':
+          description: Account deleted; the session ends.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/WrongPassword'
+
+  /api/users/me/login/:
+    patch:
+      operationId: changeLogin
+      tags: [Users]
+      summary: Change the current user's login
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLoginRequest'
+      responses:
+        '200':
+          description: Login changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '400':
+          description: Validation failed (including login already taken).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/WrongPassword'
+
+  /api/users/me/password/:
+    post:
+      operationId: changePassword
+      tags: [Users]
+      summary: Change the current user's password
+      description: The current session stays logged in; other sessions are logged out.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password changed.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/WrongPassword'
+
+  /api/users/me/recovery-code/:
+    post:
+      operationId: regenerateRecoveryCode
+      tags: [Users]
+      summary: Generate a new recovery code
+      description: Replaces the current recovery code with a new one, shown once (D1.7).
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordConfirmRequest'
+      responses:
+        '200':
+          description: New recovery code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryCodeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/WrongPassword'
+
+  /api/users/me/avatar/:
+    delete:
+      operationId: deleteAvatar
+      tags: [Users]
+      summary: Remove the current user's avatar
+      description: '`avatar_url` becomes null and the frontend shows the default avatar.'
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Avatar removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/users/{username}/:
+    parameters:
+      - $ref: '#/components/parameters/username'
+    get:
+      operationId: getPublicUser
+      tags: [Users]
+      summary: Get a public profile
+      description: |
+        Public data of a user (never the login) (D2.2). Their videos: `GET /api/library/?author=<username>`.
+      responses:
+        '200':
+          description: Public profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------- Videos (manage my uploads)
+  /api/videos/:
+    get:
+      operationId: listMyVideos
+      tags: [Videos]
+      summary: List my videos
+      description: |
+        My uploads (private and public, every analysis status) for managing them (D0.1).
+        Uses the same filters as the library, plus `analysis_status` and `visibility`.
+      parameters:
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/difficulty'
+        - $ref: '#/components/parameters/author'
+        - $ref: '#/components/parameters/ordering'
+        - name: analysis_status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AnalysisStatus'
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Visibility'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: A page of my videos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMyVideoList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: uploadVideo
+      tags: [Videos]
+      summary: Upload a video
+      description: |
+        Uploads a video (`mp4`, `mov` or `webm`, max 500 MB). The server normalizes it to MP4 30 fps ≤1080p
+        and queues the analysis (D3.4). The video starts private with `analysis_status: pending`;
+        poll `GET /api/videos/{video_id}/` until it is `done` or `failed`.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VideoUploadRequest'
+      responses:
+        '201':
+          description: Video uploaded and queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyVideo'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/videos/{video_id}/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      operationId: getVideo
+      tags: [Videos]
+      summary: Get a video
+      description: |
+        Owner → `MyVideo`. Anyone else, for a public video → `PublicVideo` (owner-only fields hidden) (D4.4).
+        Someone else's private video → 404.
+      responses:
+        '200':
+          description: Video details.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/MyVideo'
+                  - $ref: '#/components/schemas/PublicVideo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateVideo
+      tags: [Videos]
+      summary: Update a video
+      description: |
+        Owner only. Changes metadata, difficulty and visibility (publish / unpublish) (D4.1).
+        The file can't be replaced: delete the video and upload a new one (D3.6).
+        - Publishing (`visibility: public`) requires `analysis_status: done` and a `difficulty`, else 409.
+        - Unpublishing clears `published_at`; likes are kept.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoUpdateRequest'
+      responses:
+        '200':
+          description: Video updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyVideo'
+        '400':
+          description: Validation failed (including a `file` field sent).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The video can't be published yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+              examples:
+                notAnalysed:
+                  value:
+                    detail: The video must be analysed before it can be published.
+                noDifficulty:
+                  value:
+                    detail: A public video needs a difficulty.
+    delete:
+      operationId: deleteVideo
+      tags: [Videos]
+      summary: Delete a video
+      description: |
+        Owner only. Deletes the video, its file and its likes. Dance attempts made on it are kept;
+        their `reference_video` becomes null and `reference_title` stays.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Video deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/videos/{video_id}/stream/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      operationId: streamVideo
+      tags: [Videos]
+      summary: Stream a video
+      description: |
+        The normalized MP4 file, for `<video src>` (D3.4). Owner or public video (D4.4).
+        Supports HTTP range requests for seeking. `download=1` sends it as an attachment named `<title>.mp4`.
+      parameters:
+        - name: download
+          in: query
+          required: false
+          description: Download the file instead of playing it inline.
+          schema:
+            type: string
+            enum: ['1']
+        - name: Range
+          in: header
+          required: false
+          description: Byte range, e.g. `bytes=0-1048575`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The whole file.
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Part of the file for a range request.
+          headers:
+            Content-Range:
+              schema:
+                type: string
+                example: bytes 0-1048575/52428800
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '416':
+          description: The requested range is outside the file.
+          headers:
+            Content-Range:
+              schema:
+                type: string
+                example: bytes */52428800
+
+  /api/videos/{video_id}/analysis/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      operationId: getVideoAnalysis
+      tags: [Videos]
+      summary: Get the video analysis
+      description: |
+        The stored analysis, available once `analysis_status` is `done`. Owner or public video (D4.4).
+        The format is **unstable** until DAN-35 settles it (D7.4).
+      responses:
+        '200':
+          description: The analysis.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoAnalysis'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The analysis isn't finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+              example:
+                detail: Video is not analysed yet.
+
+  /api/videos/{video_id}/reanalyze/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    post:
+      operationId: reanalyzeVideo
+      tags: [Videos]
+      summary: Re-run a failed analysis
+      description: Owner only. Allowed only when `analysis_status` is `failed` (D3.7).
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '202':
+          description: 'Analysis queued again (`analysis_status: pending`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyVideo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/NotFailed'
+
+  /api/videos/{video_id}/dance-attempts/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      operationId: listVideoDanceAttempts
+      tags: [Dance Attempts]
+      summary: My attempts on one video
+      description: My dance attempts on this video, newest first. Owner or public video, else 404 (D6.4).
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: A page of attempts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDanceAttemptList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------- Library (browse + likes)
+  /api/library/:
+    get:
+      operationId: listLibrary
+      tags: [Library]
+      summary: Browse videos
+      description: |
+        The browse screen with the "public + mine" / "mine only" toggle (D0.1, D4.2).
+        - `scope=all` (default): public videos **and** all my own videos (also private ones, badge them with `visibility`).
+        - `scope=mine`: only my own videos.
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, mine]
+            default: all
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/difficulty'
+        - $ref: '#/components/parameters/author'
+        - $ref: '#/components/parameters/ordering'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: A page of videos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPublicVideoList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/library/liked/:
+    get:
+      operationId: listLikedVideos
+      tags: [Library]
+      summary: Videos I liked
+      description: |
+        Videos I liked that are public or mine, newest like first (D5.2). A liked video that its owner
+        unpublished is hidden (the like is kept). `ordering` overrides the default order.
+      parameters:
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/difficulty'
+        - $ref: '#/components/parameters/author'
+        - name: ordering
+          in: query
+          required: false
+          description: Default is the newest like first.
+          schema:
+            type: string
+            enum: [newest, likes, played]
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: A page of liked videos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPublicVideoList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/library/{video_id}/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    get:
+      operationId: getLibraryVideo
+      tags: [Library]
+      summary: Get a library video
+      description: A public video or one of my own, as shown on the library page (D0.1, D4.4).
+      responses:
+        '200':
+          description: Video.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicVideo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/library/{video_id}/like/:
+    parameters:
+      - $ref: '#/components/parameters/videoId'
+    put:
+      operationId: likeVideo
+      tags: [Library]
+      summary: Like a video
+      description: Idempotent. Only public videos (own public videos too) can be liked (D5.1, D5.2).
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: Liked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No such public video.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+    delete:
+      operationId: unlikeVideo
+      tags: [Library]
+      summary: Remove my like
+      description: Idempotent.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '200':
+          description: Like removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------- Dance attempts
+  /api/dance-attempts/:
+    get:
+      operationId: listDanceAttempts
+      tags: [Dance Attempts]
+      summary: My attempt history
+      description: |
+        All my dance attempts, newest first (D6.4). `video_id` narrows it to one video
+        (same as `GET /api/videos/{video_id}/dance-attempts/`).
+      parameters:
+        - name: video_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: A page of attempts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDanceAttemptList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createDanceAttempt
+      tags: [Dance Attempts]
+      summary: Upload a dance attempt
+      description: |
+        Uploads my recording of dancing to a reference video (D6.1). The reference video must be public or mine
+        (else 404) and analysed (else 409) (D6.5, D6.6). The recording (`mp4`, `mov` or `webm`, max 500 MB)
+        is normalized, kept and scored in the background (D3.4, D6.7). The response comes right away with
+        `status: pending`; poll `GET /api/dance-attempts/{attempt_id}/`.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DanceAttemptCreateRequest'
+      responses:
+        '201':
+          description: Attempt recorded and queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DanceAttemptDetails'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: The reference video doesn't exist or isn't public / mine.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+        '409':
+          description: The reference video isn't analysed yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+              example:
+                detail: The reference video is not analysed yet.
+
+  /api/dance-attempts/{attempt_id}/:
+    parameters:
+      - $ref: '#/components/parameters/attemptId'
+    get:
+      operationId: getDanceAttempt
+      tags: [Dance Attempts]
+      summary: Get one of my attempts
+      description: Poll this until `status` is `done` or `failed`.
+      responses:
+        '200':
+          description: Attempt details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DanceAttemptDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteDanceAttempt
+      tags: [Dance Attempts]
+      summary: Delete one of my attempts
+      description: |
+        Owner only. Permanently deletes the attempt and its recording (D6.8). Allowed in any status, also
+        while it is still being scored; the scoring then stops without a result.
+        `times_played` of the video, my `best_score` and the score diffs of my other attempts are
+        recomputed from the attempts that are left.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '204':
+          description: Attempt deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/dance-attempts/{attempt_id}/reanalyze/:
+    parameters:
+      - $ref: '#/components/parameters/attemptId'
+    post:
+      operationId: reanalyzeDanceAttempt
+      tags: [Dance Attempts]
+      summary: Re-run a failed attempt analysis
+      description: Allowed only when `status` is `failed` (D3.7).
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        '202':
+          description: 'Scoring queued again (`status: pending`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DanceAttemptDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/NotFailed'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: Django session cookie, set by login / register.
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRFToken
+      description: Value of the `csrftoken` cookie (from `GET /api/auth/csrf/`). Required on unsafe methods.
+
+  parameters:
+    videoId:
+      name: video_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    attemptId:
+      name: attempt_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    username:
+      name: username
+      in: path
+      required: true
+      schema:
+        type: string
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    offset:
+      name: offset
+      in: query
+      required: false
+      description: Number of items to skip. Infinite scroll can just follow `next`.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    search:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive partial match on title, song title, song author and author username (D4.2).
+      schema:
+        type: string
+    difficulty:
+      name: difficulty
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/Difficulty'
+    author:
+      name: author
+      in: query
+      required: false
+      description: Exact author username.
+      schema:
+        type: string
+    ordering:
+      name: ordering
+      in: query
+      required: false
+      description: |
+        `newest` = by publish date (creation date for private videos), `likes` = most liked,
+        `played` = most danced (D4.2, D4.3).
+      schema:
+        type: string
+        enum: [newest, likes, played]
+        default: newest
+
+  schemas:
+    # ------------------------------------------------------------ Enums
+    Difficulty:
+      type: string
+      enum: [beginner, intermediate, advanced]
+    AnalysisStatus:
+      type: string
+      description: '`failed` also covers a failed normalization of the file.'
+      enum: [pending, processing, done, failed]
+    Visibility:
+      type: string
+      enum: [private, public]
+
+    # ------------------------------------------------------------ Auth
+    RegisterRequest:
+      type: object
+      required: [username, login, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          description: Public name shown everywhere. `me` is reserved.
+        login:
+          type: string
+          minLength: 6
+          maxLength: 32
+          description: Private, used only to sign in.
+        password:
+          type: string
+          format: password
+          maxLength: 128
+          description: Checked by Django's password validators (D1.6).
+    RegisterResponse:
+      allOf:
+        - $ref: '#/components/schemas/CurrentUser'
+        - $ref: '#/components/schemas/RecoveryCodeResponse'
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+        password:
+          type: string
+          format: password
+    PasswordResetRequest:
+      type: object
+      required: [login, recovery_code, new_password]
+      properties:
+        login:
+          type: string
+        recovery_code:
+          type: string
+        new_password:
+          type: string
+          format: password
+          maxLength: 128
+    RecoveryCodeResponse:
+      type: object
+      required: [recovery_code]
+      properties:
+        recovery_code:
+          type: string
+          readOnly: true
+          description: One-time code, shown only in this response. Stored only as a hash.
+          example: K7QM-2XPA-9DLE-W4TR
+
+    # ------------------------------------------------------------ Users
+    CurrentUser:
+      type: object
+      required: [id, username, login, avatar_url, bio]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+        login:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Null = show the default avatar.
+        bio:
+          type: string
+          maxLength: 300
+    PublicUser:
+      type: object
+      required: [username, avatar_url, bio, public_videos_count]
+      properties:
+        username:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        bio:
+          type: string
+          maxLength: 300
+        public_videos_count:
+          type: integer
+          minimum: 0
+    UpdateProfileRequest:
+      type: object
+      description: At least one field.
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        bio:
+          type: string
+          maxLength: 300
+        avatar:
+          type: string
+          format: binary
+          description: JPEG or PNG, max 5 MB.
+    UpdateLoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          minLength: 6
+          maxLength: 32
+        password:
+          type: string
+          format: password
+          description: Current password, as a confirmation.
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password:
+          type: string
+          format: password
+        new_password:
+          type: string
+          format: password
+          maxLength: 128
+    PasswordConfirmRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          format: password
+
+    # ------------------------------------------------------------ Videos
+    PublicVideo:
+      type: object
+      description: A video as everyone sees it (library cards, detail page).
+      required:
+        - id
+        - title
+        - description
+        - song_title
+        - song_author
+        - difficulty
+        - duration_seconds
+        - thumbnail_url
+        - visibility
+        - published_at
+        - author_username
+        - author_avatar_url
+        - is_mine
+        - likes_count
+        - liked_by_me
+        - times_played
+        - best_score
+        - created_at
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 500
+        song_title:
+          type: string
+          maxLength: 200
+          description: Typed by the author; may be empty.
+        song_author:
+          type: string
+          maxLength: 200
+          description: Typed by the author; may be empty.
+        difficulty:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/Difficulty'
+          nullable: true
+          description: Null until the author sets it; required to publish.
+        duration_seconds:
+          type: number
+          nullable: true
+          description: Read from the file on upload; null if unreadable.
+        thumbnail_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Null until a thumbnail is generated (separate backend task); show a placeholder.
+        visibility:
+          allOf:
+            - $ref: '#/components/schemas/Visibility'
+          description: Always `public` for other people's videos; used for the "private" badge on my own.
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        author_username:
+          type: string
+        author_avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        is_mine:
+          type: boolean
+        likes_count:
+          type: integer
+          minimum: 0
+          description: Counted from likes on every request (D5.1).
+        liked_by_me:
+          type: boolean
+        times_played:
+          type: integer
+          minimum: 0
+          description: Number of existing dance attempts on this video, by everyone; drops when an attempt is deleted (D4.3).
+        best_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: My best finished score on this video; null if I never danced it (D6.4).
+        created_at:
+          type: string
+          format: date-time
+    MyVideo:
+      description: A video as its owner sees it (D3.3).
+      allOf:
+        - $ref: '#/components/schemas/PublicVideo'
+        - type: object
+          required: [file_size, analysis_status, updated_at]
+          properties:
+            file_size:
+              type: number
+              description: Size of the stored (normalized) file in bytes.
+            analysis_status:
+              $ref: '#/components/schemas/AnalysisStatus'
+            updated_at:
+              type: string
+              format: date-time
+    VideoUploadRequest:
+      type: object
+      required: [title, file]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 500
+          default: ''
+        song_title:
+          type: string
+          maxLength: 200
+          default: ''
+        song_author:
+          type: string
+          maxLength: 200
+          default: ''
+        difficulty:
+          $ref: '#/components/schemas/Difficulty'
+        file:
+          type: string
+          format: binary
+          description: mp4, mov or webm, max 500 MB. Normalized on the server.
+    VideoUpdateRequest:
+      type: object
+      description: At least one field. `file` is not accepted (D3.6).
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 500
+        song_title:
+          type: string
+          maxLength: 200
+        song_author:
+          type: string
+          maxLength: 200
+        difficulty:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/Difficulty'
+          nullable: true
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+    VideoAnalysis:
+      type: object
+      additionalProperties: true
+      description: Analysis JSON produced for the video. The format is not final (DAN-35).
+      x-unstable: true
+    LikeState:
+      type: object
+      required: [likes_count, liked_by_me]
+      properties:
+        likes_count:
+          type: integer
+          minimum: 0
+        liked_by_me:
+          type: boolean
+
+    # ------------------------------------------------------------ Dance attempts
+    AttemptStatus:
+      type: string
+      enum: [pending, processing, done, failed]
+    DanceAttempt:
+      type: object
+      required:
+        - id
+        - status
+        - score
+        - score_diff_previous
+        - score_diff_best
+        - reference_title
+        - created_at
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/AttemptStatus'
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Null until `status` is `done`.
+        score_diff_previous:
+          type: integer
+          nullable: true
+          description: Score minus my previous attempt on the same video. Null for the first attempt or while not done.
+        score_diff_best:
+          type: integer
+          nullable: true
+          description: Score minus my best earlier score on the same video. Null for the first attempt or while not done.
+        reference_title:
+          type: string
+          description: Title of the video at the time of the attempt; kept after the video is deleted.
+        created_at:
+          type: string
+          format: date-time
+    DanceAttemptDetails:
+      allOf:
+        - $ref: '#/components/schemas/DanceAttempt'
+        - type: object
+          required: [user_recording_url, reference_video_url, score_details]
+          properties:
+            user_recording_url:
+              type: string
+              format: uri
+              description: The url for the recording of the user.
+            reference_video_url:
+              type: string
+              format: uri
+              description: The url for the reference video.
+            score_details:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: Scores per segment and joint; null until done. The format is not final (D6.2).
+              x-unstable: true
+    DanceAttemptCreateRequest:
+      type: object
+      required: [reference_video_id, recording, mediapipe_output]
+      properties:
+        reference_video_id:
+          type: integer
+          format: int64
+          minimum: 1
+        recording:
+          type: string
+          format: binary
+          description: mp4, mov or webm, max 500 MB. Normalized and kept on the server.
+        mediapipe_output:
+          type: string
+          format: json
+          description: JSON output of the MediaPipe model run on the live recording. Contains a list of frames.
+
+    # ------------------------------------------------------------ Pagination
+    Page:
+      type: object
+      required: [count, next, previous]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+    PaginatedMyVideoList:
+      allOf:
+        - $ref: '#/components/schemas/Page'
+        - type: object
+          required: [results]
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/MyVideo'
+    PaginatedPublicVideoList:
+      allOf:
+        - $ref: '#/components/schemas/Page'
+        - type: object
+          required: [results]
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/PublicVideo'
+    PaginatedDanceAttemptList:
+      allOf:
+        - $ref: '#/components/schemas/Page'
+        - type: object
+          required: [results]
+          properties:
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/DanceAttempt'
+
+    # ------------------------------------------------------------ Errors
+    DetailError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+    ValidationError:
+      type: object
+      description: Validation errors keyed by field name (`non_field_errors` for the whole object).
+      additionalProperties:
+        type: array
+        items:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Not logged in.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
+    NotFound:
+      description: Not found (or not visible to you).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
+    ValidationError:
+      description: Validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    WrongPassword:
+      description: The password confirmation is wrong.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
+          example:
+            detail: Password is incorrect.
+    NotFailed:
+      description: Only a failed analysis can be re-run.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
+          example:
+            detail: Only a failed analysis can be re-run.
+    TooManyRequests:
+      description: Rate limit exceeded (D1.2).
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DetailError'
