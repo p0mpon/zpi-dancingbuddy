@@ -119,3 +119,13 @@ def set_attempt_result(
     )
 
     return updated_count > 0
+
+
+def delete_attempt(*, attempt: DanceAttempt):
+    """
+    Permanently deletes a DanceAttempt and its associated physical recording file.
+    """
+    if attempt.recording:
+        attempt.recording.delete(save=False)
+        
+    attempt.delete()

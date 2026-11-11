@@ -16,6 +16,7 @@ from core.validators import parse_positive_int_param
 class DanceAttemptViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet
 ):
     # Default fallback serializer
@@ -74,3 +75,9 @@ class DanceAttemptViewSet(
 
         out_serializer = self.get_serializer(attempt)
         return Response(out_serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        """
+        Overrides the default mixin behavior to route deletion through the service.
+        """
+        services.delete_attempt(attempt=instance)
