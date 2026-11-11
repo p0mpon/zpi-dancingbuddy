@@ -1336,19 +1336,6 @@ components:
     AttemptStatus:
       type: string
       enum: [pending, processing, done, failed]
-    ReferenceVideo:
-      type: object
-      description: The video that was danced to.
-      required: [id, title, thumbnail_url]
-      properties:
-        id:
-          type: integer
-        title:
-          type: string
-        thumbnail_url:
-          type: string
-          format: uri
-          nullable: true
     DanceAttempt:
       type: object
       required:
@@ -1357,7 +1344,6 @@ components:
         - score
         - score_diff_previous
         - score_diff_best
-        - reference_video
         - reference_title
         - created_at
       properties:
@@ -1380,12 +1366,6 @@ components:
           type: integer
           nullable: true
           description: Score minus my best earlier score on the same video. Null for the first attempt or while not done.
-        reference_video:
-          type: object
-          allOf:
-            - $ref: '#/components/schemas/ReferenceVideo'
-          nullable: true
-          description: Null if the video was deleted; use `reference_title` then.
         reference_title:
           type: string
           description: Title of the video at the time of the attempt; kept after the video is deleted.
@@ -1396,8 +1376,16 @@ components:
       allOf:
         - $ref: '#/components/schemas/DanceAttempt'
         - type: object
-          required: [score_details]
+          required: [user_recording_url, reference_video_url, score_details]
           properties:
+            user_recording_url:
+              type: string
+              format: uri
+              description: The url for the recording of the user.
+            reference_video_url:
+              type: string
+              format: uri
+              description: The url for the reference video.
             score_details:
               type: object
               nullable: true
@@ -1406,7 +1394,7 @@ components:
               x-unstable: true
     DanceAttemptCreateRequest:
       type: object
-      required: [reference_video_id, recording]
+      required: [reference_video_id, recording, mediapipe_output]
       properties:
         reference_video_id:
           type: integer
@@ -1416,6 +1404,10 @@ components:
           type: string
           format: binary
           description: mp4, mov or webm, max 500 MB. Normalized and kept on the server.
+        mediapipe_output:
+          type: string
+          format: json
+          description: JSON output of the MediaPipe model run on the live recording. Contains a list of frames.
 
     # ------------------------------------------------------------ Pagination
     Page:
