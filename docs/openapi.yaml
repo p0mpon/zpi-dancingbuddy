@@ -68,7 +68,7 @@ paths:
         Creates an account and logs the user in (sets the session cookie) (D1.5).
         The response contains the **recovery code once**. The frontend must show it and ask the user
         to save it; it is the only way to reset a forgotten password (D1.7).
-        The username `me` is reserved.
+        The nickname `me` is reserved.
       security:
         - csrfHeader: []
       requestBody:
@@ -85,7 +85,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegisterResponse'
         '400':
-          description: Validation failed (including username or login already taken, weak password).
+          description: Validation failed (including username or nickname already taken, weak password).
           content:
             application/json:
               schema:
@@ -98,7 +98,7 @@ paths:
       operationId: login
       tags: [Auth]
       summary: Log in
-      description: Signs in with the private `login` (not the public username) (D1.1).
+      description: Signs in with the private `username` (not the public nickname) (D1.1).
       security:
         - csrfHeader: []
       requestBody:
@@ -117,7 +117,7 @@ paths:
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
-          description: Wrong login or password.
+          description: Wrong username or password.
           content:
             application/json:
               schema:
@@ -145,9 +145,9 @@ paths:
       tags: [Auth]
       summary: Reset a forgotten password with the recovery code
       description: |
-        Sets a new password using the login and the recovery code (D1.7). The used code stops working and
+        Sets a new password using the username and the recovery code (D1.7). The used code stops working and
         a **new** code is returned (show it once). Other sessions of the user are logged out.
-        A wrong login and a wrong code give the same error.
+        A wrong username and a wrong code give the same error.
       security:
         - csrfHeader: []
       requestBody:
@@ -164,7 +164,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecoveryCodeResponse'
         '400':
-          description: Invalid login or recovery code, or the new password fails validation.
+          description: Invalid username or recovery code, or the new password fails validation.
           content:
             application/json:
               schema:
@@ -172,7 +172,7 @@ paths:
                   - $ref: '#/components/schemas/DetailError'
                   - $ref: '#/components/schemas/ValidationError'
               example:
-                detail: Invalid login or recovery code.
+                detail: Invalid username or recovery code.
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -195,7 +195,7 @@ paths:
       operationId: updateCurrentUser
       tags: [Users]
       summary: Update the current user's profile
-      description: Changes the username, bio and/or avatar (D2.3). Send at least one field.
+      description: Changes the nickname, bio and/or avatar (D2.3). Send at least one field.
       security:
         - cookieAuth: []
           csrfHeader: []
@@ -213,7 +213,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CurrentUser'
         '400':
-          description: Validation failed (including username already taken or reserved, avatar too large).
+          description: Validation failed (including nickname already taken or reserved, avatar too large).
           content:
             application/json:
               schema:
@@ -244,11 +244,11 @@ paths:
         '403':
           $ref: '#/components/responses/WrongPassword'
 
-  /api/users/me/login/:
+  /api/users/me/username/:
     patch:
-      operationId: changeLogin
+      operationId: changeUsername
       tags: [Users]
-      summary: Change the current user's login
+      summary: Change the current user's username (used to sign in)
       security:
         - cookieAuth: []
           csrfHeader: []
@@ -257,16 +257,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateLoginRequest'
+              $ref: '#/components/schemas/UpdateUsernameRequest'
       responses:
         '200':
-          description: Login changed.
+          description: Username changed.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CurrentUser'
         '400':
-          description: Validation failed (including login already taken).
+          description: Validation failed (including username already taken).
           content:
             application/json:
               schema:
@@ -343,15 +343,15 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /api/users/{username}/:
+  /api/users/{nickname}/:
     parameters:
-      - $ref: '#/components/parameters/username'
+      - $ref: '#/components/parameters/nickname'
     get:
       operationId: getPublicUser
       tags: [Users]
       summary: Get a public profile
       description: |
-        Public data of a user (never the login) (D2.2). Their videos: `GET /api/library/?author=<username>`.
+        Public data of a user (never the username) (D2.2). Their videos: `GET /api/library/?author=<nickname>`.
       responses:
         '200':
           description: Public profile.
@@ -956,8 +956,8 @@ components:
         type: integer
         format: int64
         minimum: 1
-    username:
-      name: username
+    nickname:
+      name: nickname
       in: path
       required: true
       schema:
@@ -985,7 +985,7 @@ components:
       name: search
       in: query
       required: false
-      description: Case-insensitive partial match on title, song title, song author and author username (D4.2).
+      description: Case-insensitive partial match on title, song title, song author and author nickname (D4.2).
       schema:
         type: string
     difficulty:
@@ -998,7 +998,7 @@ components:
       name: author
       in: query
       required: false
-      description: Exact author username.
+      description: Exact author nickname.
       schema:
         type: string
     ordering:
@@ -1029,18 +1029,18 @@ components:
     # ------------------------------------------------------------ Auth
     RegisterRequest:
       type: object
-      required: [username, login, password]
+      required: [username, nickname, password]
       properties:
         username:
+          type: string
+          minLength: 6
+          maxLength: 32
+          description: Private, used only to sign in. Never shown to other users.
+        nickname:
           type: string
           minLength: 3
           maxLength: 32
           description: Public name shown everywhere. `me` is reserved.
-        login:
-          type: string
-          minLength: 6
-          maxLength: 32
-          description: Private, used only to sign in.
         password:
           type: string
           format: password
@@ -1052,18 +1052,18 @@ components:
         - $ref: '#/components/schemas/RecoveryCodeResponse'
     LoginRequest:
       type: object
-      required: [login, password]
+      required: [username, password]
       properties:
-        login:
+        username:
           type: string
         password:
           type: string
           format: password
     PasswordResetRequest:
       type: object
-      required: [login, recovery_code, new_password]
+      required: [username, recovery_code, new_password]
       properties:
-        login:
+        username:
           type: string
         recovery_code:
           type: string
@@ -1084,14 +1084,15 @@ components:
     # ------------------------------------------------------------ Users
     CurrentUser:
       type: object
-      required: [id, username, login, avatar_url, bio]
+      required: [id, username, nickname, avatar_url, bio]
       properties:
         id:
           type: integer
           readOnly: true
         username:
           type: string
-        login:
+          description: Private, used only to sign in. Returned only to its owner.
+        nickname:
           type: string
         avatar_url:
           type: string
@@ -1103,9 +1104,9 @@ components:
           maxLength: 300
     PublicUser:
       type: object
-      required: [username, avatar_url, bio, public_videos_count]
+      required: [nickname, avatar_url, bio, public_videos_count]
       properties:
-        username:
+        nickname:
           type: string
         avatar_url:
           type: string
@@ -1121,7 +1122,7 @@ components:
       type: object
       description: At least one field.
       properties:
-        username:
+        nickname:
           type: string
           minLength: 3
           maxLength: 32
@@ -1132,11 +1133,11 @@ components:
           type: string
           format: binary
           description: JPEG or PNG, max 5 MB.
-    UpdateLoginRequest:
+    UpdateUsernameRequest:
       type: object
-      required: [login, password]
+      required: [username, password]
       properties:
-        login:
+        username:
           type: string
           minLength: 6
           maxLength: 32
@@ -1178,7 +1179,7 @@ components:
         - thumbnail_url
         - visibility
         - published_at
-        - author_username
+        - author_nickname
         - author_avatar_url
         - is_mine
         - likes_count
@@ -1227,7 +1228,7 @@ components:
           type: string
           format: date-time
           nullable: true
-        author_username:
+        author_nickname:
           type: string
         author_avatar_url:
           type: string
