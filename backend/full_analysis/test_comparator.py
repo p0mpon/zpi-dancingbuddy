@@ -5,7 +5,14 @@ import pytest
 from full_analysis.choreo_comparator import (
     ANGLE_GRACE_THRESHOLD,
     ANGLE_TOLERANCE_THRESHOLD,
+    GLOBAL_POSITION_SCORE_WEIGHT,
+    JOINTS_SCORE_WEIGHT,
+    TIMESTAMP_TOLERANCE_THRESHOLD,
+    TIMESTAMP_WINDOW_THRESHOLD,
+    VELOCITY_GRACE_THRESHOLD_PERCENT,
+    VELOCITY_TOLERANCE_THRESHOLD_PERCENT,
     _compare_frames,
+    compare_choreos,
     _get_best_frame_in_window,
     _get_fixed_similarity,
     _get_relative_similarity,
@@ -17,6 +24,7 @@ from full_analysis.choreo_data_model import (
     DynamicWeights,
     GlobalPosition,
     JointData,
+    ScoredFrame,
 )
 from video_analysis.video_frame_model import Frame, Joint
 
@@ -65,32 +73,53 @@ def _make_compare_frame(
     )
 
 
+def _make_scored_frame(
+    base_frame: ChoreoFrame,
+    compare_frame: Frame,
+    *,
+    score: float,
+    delay: float,
+) -> ScoredFrame:
+    return ScoredFrame(
+        base_frame_id=base_frame.frame_id,
+        compare_frame_id=compare_frame.frame_id,
+        timestamp_sec=compare_frame.timestamp,
+        score=score,
+        delay_sec=delay,
+        joint_scores={"l_knee": score},
+    )
+
+
+def test_weights_add_up_to_1() -> None:
+    assert JOINTS_SCORE_WEIGHT + GLOBAL_POSITION_SCORE_WEIGHT == pytest.approx(1.0)
+
+
 @pytest.mark.parametrize(
     ("diff", "expected"),
     [
         (0.0, 1.0),
-        (0.05, 1.0),
-        (0.15, 0.0),
-        (0.10, 0.5),
-        (-0.10, 0.5),
-        (0.20, 0.0),
+        (ANGLE_GRACE_THRESHOLD, 1.0),
+        (ANGLE_TOLERANCE_THRESHOLD, 0.0),
+        ((ANGLE_GRACE_THRESHOLD + ANGLE_TOLERANCE_THRESHOLD) / 2, 0.5),
+        (-(ANGLE_GRACE_THRESHOLD + ANGLE_TOLERANCE_THRESHOLD) / 2, 0.5),
+        (ANGLE_TOLERANCE_THRESHOLD + 1, 0.0),
     ],
 )
 def test_get_fixed_similarity(diff: float, expected: float) -> None:
-    assert _get_fixed_similarity(diff, grace=0.05, tolerance=0.15) == pytest.approx(
-        expected
-    )
+    assert _get_fixed_similarity(
+        diff, grace=ANGLE_GRACE_THRESHOLD, tolerance=ANGLE_TOLERANCE_THRESHOLD
+    ) == pytest.approx(expected)
 
 
 @pytest.mark.parametrize(
     ("diff", "base_value", "expected"),
     [
         (0.0, 100.0, 1.0),
-        (5.0, 100.0, 1.0),
-        (12.5, 100.0, 0.5),
-        (20.0, 100.0, 0.0),
-        (-12.5, 100.0, 0.5),
-        (12.5, -100.0, 0.5),
+        (VELOCITY_GRACE_THRESHOLD_PERCENT, 100.0, 1.0),
+        ((VELOCITY_GRACE_THRESHOLD_PERCENT + VELOCITY_TOLERANCE_THRESHOLD_PERCENT) * 0.5, 100.0, 0.5),
+        (VELOCITY_TOLERANCE_THRESHOLD_PERCENT, 100.0, 0.0),
+        (-(VELOCITY_GRACE_THRESHOLD_PERCENT + VELOCITY_TOLERANCE_THRESHOLD_PERCENT) * 0.5, 100.0, 0.5),
+        ((VELOCITY_GRACE_THRESHOLD_PERCENT + VELOCITY_TOLERANCE_THRESHOLD_PERCENT) * 0.5, -100.0, 0.5),
     ],
 )
 def test_get_relative_similarity(
@@ -99,8 +128,8 @@ def test_get_relative_similarity(
     assert _get_relative_similarity(
         diff,
         base_value=base_value,
-        grace_percent=5.0,
-        tolerance_percent=20.0,
+        grace_percent=VELOCITY_GRACE_THRESHOLD_PERCENT,
+        tolerance_percent=VELOCITY_TOLERANCE_THRESHOLD_PERCENT,
     ) == pytest.approx(expected)
 
 
@@ -108,11 +137,11 @@ def test_get_relative_similarity(
     ("timestamp_difference", "expected"),
     [
         (0.0, 1.0),
-        (0.07, 1.0),
-        (0.2, 0.0),
-        (0.135, 0.5),
-        (-0.135, 0.5),
-        (-0.3, 0.0),
+        (TIMESTAMP_TOLERANCE_THRESHOLD, 1.0),
+        (TIMESTAMP_WINDOW_THRESHOLD, 0.0),
+        ((TIMESTAMP_TOLERANCE_THRESHOLD + TIMESTAMP_WINDOW_THRESHOLD) / 2, 0.5),
+        (-(TIMESTAMP_TOLERANCE_THRESHOLD + TIMESTAMP_WINDOW_THRESHOLD) / 2, 0.5),
+        (-(TIMESTAMP_WINDOW_THRESHOLD + 1), 0.0),
     ],
 )
 def test_get_timestamp_weight(
@@ -142,19 +171,30 @@ def test_compare_frames_returns_timestamp_delay_without_changing_score() -> None
 
 
 def test_compare_frames_with_different_joint_data() -> None:
+    angle_difference = (
+        ANGLE_GRACE_THRESHOLD
+        + (ANGLE_TOLERANCE_THRESHOLD - ANGLE_GRACE_THRESHOLD) / 2
+    )
     delay, score, joint_scores = _compare_frames(
         _make_base_frame(),
         _make_compare_frame(
-            joints={"l_knee": Joint(angle=120.0, visibility=1.0)}
+            joints={
+                "l_knee": Joint(
+                    angle=90.0 + angle_difference, visibility=1.0
+                )
+            }
         ),
     )
 
     expected_joint_score = (
-        (ANGLE_TOLERANCE_THRESHOLD - 30.0)
+        (ANGLE_TOLERANCE_THRESHOLD - angle_difference)
         / (ANGLE_TOLERANCE_THRESHOLD - ANGLE_GRACE_THRESHOLD)
     )
     assert delay == pytest.approx(0.0)
-    assert score == pytest.approx(0.85 * expected_joint_score + 0.15)
+    assert score == pytest.approx(
+        JOINTS_SCORE_WEIGHT * expected_joint_score
+        + GLOBAL_POSITION_SCORE_WEIGHT
+    )
     assert joint_scores["l_knee"] == pytest.approx(expected_joint_score)
 
 
@@ -177,7 +217,7 @@ def test_compare_frames_uses_only_joints_when_compare_global_position_is_missing
         _make_compare_frame(hip_height=None, hip_rotation=None),
     )
 
-    assert score == pytest.approx(0.85)
+    assert score == pytest.approx(JOINTS_SCORE_WEIGHT)
 
 
 def test_compare_frames_weights_joint_scores_by_base_visibility() -> None:
@@ -207,7 +247,10 @@ def test_compare_frames_weights_joint_scores_by_base_visibility() -> None:
             hip_rotation=None,
             joints={
                 "visible_match": Joint(angle=90.0, visibility=1.0),
-                "visible_mismatch": Joint(angle=135.0, visibility=1.0),
+                "visible_mismatch": Joint(
+                    angle=90.0 + ANGLE_TOLERANCE_THRESHOLD,
+                    visibility=1.0,
+                ),
             },
         ),
     )
@@ -295,3 +338,52 @@ def test_get_best_frame_returns_default_for_no_compare_frames() -> None:
     assert result.delay_sec == pytest.approx(0.0)
     assert result.joint_scores == {}
     compare_mock.assert_not_called()
+
+
+def test_compare_choreos_returns_perfect_score_for_matching_choreographies() -> None:
+    base_frame = _make_base_frame(timestamp=1.0)
+    compare_frame = _make_compare_frame(timestamp=1.0)
+    scored_frame = _make_scored_frame(base_frame, compare_frame, score=1.0, delay=0.0)
+
+    with patch(
+        "full_analysis.choreo_comparator._get_best_frame_in_window",
+        return_value=scored_frame,
+    ) as best_frame_mock:
+        scored_frames, final_score = compare_choreos(
+            [base_frame], [compare_frame]
+        )
+
+    assert scored_frames == [scored_frame]
+    assert final_score == pytest.approx(1.0)
+    best_frame_mock.assert_called_once_with(base_frame, [compare_frame])
+
+
+def test_compare_choreos_nerfs_score_for_timestamp_delay() -> None:
+    base_frame = _make_base_frame(timestamp=1.0)
+    delay = (TIMESTAMP_TOLERANCE_THRESHOLD + TIMESTAMP_WINDOW_THRESHOLD) / 2
+    compare_frame = _make_compare_frame(timestamp=base_frame.timestamp_sec + delay)
+    scored_frame = _make_scored_frame(
+        base_frame, compare_frame, score=1.0, delay=delay
+    )
+
+    with patch(
+        "full_analysis.choreo_comparator._get_best_frame_in_window",
+        return_value=scored_frame,
+    ) as best_frame_mock:
+        scored_frames, final_score = compare_choreos(
+            [base_frame], [compare_frame]
+        )
+
+    expected_weight = _get_timestamp_weight(delay)
+    assert scored_frames == [scored_frame]
+    assert final_score == pytest.approx(expected_weight)
+    best_frame_mock.assert_called_once_with(base_frame, [compare_frame])
+
+
+@pytest.mark.parametrize("base_choreo, compare_choreo", [(None, ["frame"]), (["frame"], None)])
+def test_compare_choreos_rejects_missing_choreography(
+    base_choreo: list[ChoreoFrame] | None,
+    compare_choreo: list[Frame] | None,
+) -> None:
+    with pytest.raises(ValueError):
+        compare_choreos(base_choreo, compare_choreo)

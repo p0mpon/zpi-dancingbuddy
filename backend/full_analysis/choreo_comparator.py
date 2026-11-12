@@ -25,7 +25,6 @@ JOINTS_SCORE_WEIGHT = 0.85
 GLOBAL_POSITION_SCORE_WEIGHT = 0.15
 
 
-
 def _get_fixed_similarity(diff: float, grace: float, tolerance: float) -> float:
     """
     Converts a value difference into a normalized similarity score for fixed thresholds.
@@ -252,7 +251,7 @@ def compare_choreos(base_choreo: list[ChoreoFrame],
         tuple[list[ScoredFrame], float]: A list of scored frames and a general similarity score (between 0 and 1).
     """
     if not base_choreo or not compare_choreo:
-        return [], 0.0
+        raise ValueError("Both base_choreo and compare_choreo must be non-empty lists.")
 
     # NOTE FOR LATER: perhaps add bpm to metadata, to then adjust the acceptable delay window
     final_score_sum = 0.0
