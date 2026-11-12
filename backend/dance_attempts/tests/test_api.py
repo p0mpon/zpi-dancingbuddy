@@ -39,6 +39,15 @@ class DanceAttemptViewSetTests(APITestCase):
             visibility='public',
             analysis_status=AnalysisStatus.DONE,
         )
+        self.private_video = Video.objects.create(
+            owner=self.other_user,
+            title='Gods Menu',
+            path_to_resource='videos/gods_menu-stray_kids.mp4',
+            file_size=100,
+            published_at=None,
+            visibility='private',
+            analysis_status=AnalysisStatus.DONE,
+        )
 
     def test_list_attempts_with_pagination(self):
         # GIVEN the user has 3 attempts
@@ -80,12 +89,44 @@ class DanceAttemptViewSetTests(APITestCase):
             'mediapipe_data': json.dumps([{"x": 1}])
         }
 
-        # WHEN we post to the endpoint
+        # WHEN we try to create an attempt
         response = self.client.post(f'{self.BASE_URL}/', payload, format='multipart')
 
         # THEN we should get a 201 Created
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['status'], AnalysisStatus.PENDING)
+
+    def test_create_attempt_video_not_found_returns_404(self):
+        # GIVEN a non-existent video ID
+        recording = SimpleUploadedFile('dance.mp4', b'video_data', content_type='video/mp4')
+        payload = {
+            'reference_video_id': 9999,
+            'recording': recording,
+            'mediapipe_data': json.dumps([{"x": 1}])
+        }
+
+        # WHEN we try to create an attempt
+        response = self.client.post(f'{self.BASE_URL}/', payload, format='multipart')
+
+        # THEN should return 404 Not Found
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('detail', response.data)
+
+    def test_create_attempt_video_not_owned_returns_404(self):
+        # GIVEN a private video that belongs to another user
+        recording = SimpleUploadedFile('dance.mp4', b'video_data', content_type='video/mp4')
+        payload = {
+            'reference_video_id': self.private_video.id,
+            'recording': recording,
+            'mediapipe_data': json.dumps([{"x": 1}])
+        }
+
+        # WHEN we try to create an attempt
+        response = self.client.post(f'{self.BASE_URL}/', payload, format='multipart')
+
+        # THEN should return 404 Not Found since the video is not accessible
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('detail', response.data)
 
     def test_create_attempt_video_not_ready_returns_409(self):
         # GIVEN the video is still processing
@@ -99,7 +140,7 @@ class DanceAttemptViewSetTests(APITestCase):
             'mediapipe_data': json.dumps([{"x": 1}]),
         }
 
-        # WHEN we post
+        # WHEN we try to create an attempt
         response = self.client.post(f'{self.BASE_URL}/', payload, format='multipart')
 
         # THEN should catch the error and return 409 Conflict

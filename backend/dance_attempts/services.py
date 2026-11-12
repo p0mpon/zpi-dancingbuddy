@@ -1,18 +1,11 @@
+from dance_attempts.exceptions import AttemptNotFailedError, VideoNotFoundError, VideoNotReadyError
 from dance_attempts.models import DanceAttempt
 from django.core.files import File
 from django.db import transaction
-from django.db.models import F, OuterRef, Subquery, Q
-from django.http import Http404
+from django.db.models import F, OuterRef, Subquery
 from django.shortcuts import get_object_or_404
 from typing import Optional
 from videos.models import AnalysisStatus, Video
-
-
-class VideoNotReadyError(Exception):
-    """Raised when a video is not ready for analysis."""
-
-class AttemptNotFailedError(Exception):
-    """Raised when trying to reanalyze an attempt that hasn't failed."""
 
 
 def start_attempt_analysis(*, attempt):
@@ -79,7 +72,7 @@ def create_attempt(
 
     # Enforce rule: Video must be public or belong to the user
     if not reference_video.is_public and reference_video.owner != user:
-        raise Http404("The video you want to attempt does not exist.")
+        raise VideoNotFoundError("The video you want to attempt does not exist.")
 
     if reference_video.analysis_status != AnalysisStatus.DONE:
         raise VideoNotReadyError("The reference video is not analysed yet.")
