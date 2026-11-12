@@ -9,9 +9,11 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from dance_attempts.views import DanceAttemptViewSet
 from videos.views import VideoViewSet
 
 router = DefaultRouter()
+router.register('dance-attempts', DanceAttemptViewSet, basename='dance-attempt')
 router.register('videos', VideoViewSet, basename='video')
 
 # @TODO static files and media files in django - django-storages

@@ -30,7 +30,7 @@ class DanceAttempt(models.Model):
     reference_title = models.CharField(max_length=200)
     
     recording = models.FileField(upload_to=attempt_upload_path, null=True, blank=True)
-    json_analysis = models.JSONField(null=True, blank=True) # NOTE: is it needed?
+    json_analysis = models.JSONField(null=True, blank=True) # NOTE: for now this is treated as the data gotten from mediapipe at creation
     
     score = models.IntegerField(null=True, blank=True)
     score_details = models.JSONField(null=True, blank=True)
