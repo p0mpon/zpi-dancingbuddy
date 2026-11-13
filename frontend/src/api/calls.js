@@ -1,17 +1,5 @@
 import { authApi, defaultApi } from "./axios_instances";
-
-export const API_ENDPOINTS = {
-    "register": "register/",
-    "login": "login/",
-    "logout": "logout/",
-    "user": "user/",
-    "videos": "videos/",
-    "video_details": (id) => `videos/${id}/`,
-    "video_analysis": (id) => `videos/${id}/analysis/`,
-    "video_stream": (id) => `videos/${id}/stream/`,
-    "video_thumbnail": (id) => `videos/${id}/thumbnail/`,
-    "dance_attempts": "dance-attempts/",
-};
+import {API_ENDPOINTS} from "./endpoints";
 
 export async function getAllVideos() {
     try {
@@ -47,8 +35,8 @@ export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
     try {
         const formData = new FormData();
         formData.append('reference_video_id', referenceVideoId);
+        formData.append('recording', videoBlob, 'practice_attempt.webm');
         formData.append('json_analysis', JSON.stringify(frames));
-        formData.append('video_file', videoBlob, 'practice_attempt.webm');
 
         const response = await defaultApi.post(API_ENDPOINTS.dance_attempts, formData, {
             headers: {
