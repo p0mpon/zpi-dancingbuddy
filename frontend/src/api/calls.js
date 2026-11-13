@@ -75,8 +75,8 @@ export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
     try {
         const formData = new FormData();
         formData.append('reference_video_id', referenceVideoId);
+        formData.append('recording', videoBlob, 'practice_attempt.webm');
         formData.append('json_analysis', JSON.stringify(frames));
-        formData.append('video_file', videoBlob, 'practice_attempt.webm');
 
         const response = await api.post(API_ENDPOINTS.dance_attempts, formData, {
             headers: {
