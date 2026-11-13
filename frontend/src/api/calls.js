@@ -24,7 +24,6 @@ export async function getAllVideos(searchQuery, difficulty, nextUrl) {
 
 export async function uploadNewVideo(video) {
     try {
-        console.log(process.env.REACT_APP_API_URL)
         const response = await api.post(API_ENDPOINTS.my_videos, video)
         return response.data;
     } catch (e) {
@@ -61,6 +60,44 @@ export async function getFullVideo(id) {
         throw e;
     }
 }
+
+export async function getVideoAnalysis(id) {
+    try {
+        const response = await api.get(API_ENDPOINTS.video_analysis(id));
+        return response.data;
+    } catch (e) {
+        console.error("Failed to fetch reference analysis:", e);
+        throw e;
+    }
+}
+
+export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
+    try {
+        const formData = new FormData();
+        formData.append('reference_video_id', referenceVideoId);
+        formData.append('json_analysis', JSON.stringify(frames));
+        formData.append('video_file', videoBlob, 'practice_attempt.webm');
+
+        const response = await api.post(API_ENDPOINTS.dance_attempts, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        return response.data;
+    } catch (e) {
+        console.error("error details:", e.response?.data);
+        throw e;
+    }
+}
+
+export async function getDanceAttemptStatus(taskId) {
+    try {
+        const response = await defaultApi.get(API_ENDPOINTS.dance_attempt_status(taskId));
+        return response.data;
+    } catch (e) {
+        console.error("Failed to fetch score status:", e);
+        throw e;
+    }
 
 export async function editVideo(id, videoData) {
     try {

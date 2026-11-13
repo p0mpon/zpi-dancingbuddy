@@ -9,7 +9,7 @@ import RegisterPage from "../pages/Auth/RegisterPage";
 import MainLayout from "../layouts/MainLayout";
 import LoginRequiredRoute from "./LoginRequiredRoute";
 import {Logout} from "../pages/Auth/Logout";
-import VideoDisplay from "../pages/VideoDisplay";
+import Practice from "../pages/Practice";
 import LearningLayout from "../layouts/LearningLayout";
 
 export default function AppRoutes() {
@@ -27,7 +27,7 @@ export default function AppRoutes() {
             
             <Route element={<LearningLayout/>}>
                 <Route element={<LoginRequiredRoute/>}>
-                    <Route path="/video/:id" element={<VideoDisplay/>}/>
+                    <Route path="/video/:id" element={<Practice/>}/>
                 </Route>
             </Route>
 
