@@ -9,14 +9,14 @@ import RegisterPage from "../pages/Auth/RegisterPage";
 import MainLayout from "../layouts/MainLayout";
 import LoginRequiredRoute from "./LoginRequiredRoute";
 import {Logout} from "../pages/Auth/Logout";
-import VideoDisplay from "../pages/VideoDisplay";
+import Practice from "../pages/Practice";
 
 export default function AppRoutes() {
     return (
         <Routes>
             <Route element={<MainLayout showSearch={true}/>}>
                 <Route path="/" element={<VideoList/>}/>
-                <Route path="/video/:id" element={<VideoDisplay/>}/>
+                <Route path="/video/:id" element={<Practice/>}/>
             </Route>
 
             <Route element={<MainLayout showSearch={false}/>}>

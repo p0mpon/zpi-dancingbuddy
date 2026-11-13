@@ -44,7 +44,7 @@ export default function VideoPreviewModal({previewVideo, onHide, switchToVideoVi
                             onClick={switchToVideoView}
                         >
                             <PlayFill size={15}/>
-                            <span>Watch Full Video</span>
+                            <span>Practice</span>
                         </Button>
                     </Modal.Footer>
                 </>
