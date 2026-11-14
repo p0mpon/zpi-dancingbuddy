@@ -25,7 +25,6 @@ JOINTS_SCORE_WEIGHT = 0.85
 GLOBAL_POSITION_SCORE_WEIGHT = 0.15
 
 
-
 def _get_fixed_similarity(diff: float, grace: float, tolerance: float) -> float:
     """
     Converts a value difference into a normalized similarity score for fixed thresholds.
@@ -97,8 +96,15 @@ def _compare_frames(base_frame: ChoreoFrame, compare_frame: Frame) -> tuple[floa
     """
     timestamp_difference = compare_frame.timestamp - base_frame.timestamp_sec
 
+    global_position_exists = base_frame.global_position is not None \
+        and (base_frame.global_position.hip_y is not None \
+        or base_frame.global_position.body_rotation_deg is not None)
+    
     global_position_scores: list[float] = []
-    if compare_frame.hip_height is not None:
+    if (
+        base_frame.global_position.hip_y is not None
+        and compare_frame.hip_height is not None
+    ):
         global_position_scores.append(
             _get_fixed_similarity(
                 base_frame.global_position.hip_y - compare_frame.hip_height,
@@ -106,7 +112,10 @@ def _compare_frames(base_frame: ChoreoFrame, compare_frame: Frame) -> tuple[floa
                 HIP_HEIGHT_TOLERANCE_THRESHOLD,
             )
         )
-    if compare_frame.hip_rotation is not None:
+    if (
+        base_frame.global_position.body_rotation_deg is not None
+        and compare_frame.hip_rotation is not None
+    ):
         global_position_scores.append(
             _get_fixed_similarity(
                 abs(
@@ -178,8 +187,10 @@ def _compare_frames(base_frame: ChoreoFrame, compare_frame: Frame) -> tuple[floa
         if joints_visibility_weight > 0.0
         else 0.0
     )
-    global_position_score *= GLOBAL_POSITION_SCORE_WEIGHT
-    joints_score *= JOINTS_SCORE_WEIGHT
+
+    if global_position_exists:
+        global_position_score *= GLOBAL_POSITION_SCORE_WEIGHT
+        joints_score *= JOINTS_SCORE_WEIGHT
     
     return timestamp_difference, global_position_score + joints_score, joint_scores
 
@@ -240,7 +251,7 @@ def compare_choreos(base_choreo: list[ChoreoFrame],
         tuple[list[ScoredFrame], float]: A list of scored frames and a general similarity score (between 0 and 1).
     """
     if not base_choreo or not compare_choreo:
-        return [], 0.0
+        raise ValueError("Both base_choreo and compare_choreo must be non-empty lists.")
 
     # NOTE FOR LATER: perhaps add bpm to metadata, to then adjust the acceptable delay window
     final_score_sum = 0.0
