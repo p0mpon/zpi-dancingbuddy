@@ -16,3 +16,12 @@ class Frame(BaseModel):
 
     hip_rotation: Optional[float] = None
     hip_height: Optional[float] = None
+
+
+class RawFrame(BaseModel):
+    """
+    Raw frame data as received from the MediaPipe model.
+    """
+    timestamp: float
+    world_landmarks: list[list[float]]
+    vis_landmarks: list[list[float]]

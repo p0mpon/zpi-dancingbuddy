@@ -23,6 +23,9 @@ JOINT_CONFIG = {
     'l_torso': (12, 11, 23)
 }
 
+LANDMARK_COUNT = 33
+LANDMARK_VALUES = 4
+
 
 def calculate_3d_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
     ba = a - b
@@ -219,8 +222,8 @@ def analyze_dance_video(
                     wl = raw_world_coords[-1].copy()
                     vl = raw_vis_coords[-1].copy()
                 else:
-                    wl = np.zeros((33, 4))
-                    vl = np.zeros((33, 4))
+                    wl = np.zeros((LANDMARK_COUNT, LANDMARK_VALUES))
+                    vl = np.zeros((LANDMARK_COUNT, LANDMARK_VALUES))
 
             raw_world_coords.append(wl)
             raw_vis_coords.append(vl)

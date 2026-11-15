@@ -248,7 +248,7 @@ def compare_choreos(base_choreo: list[ChoreoFrame],
         base_choreo (ChoreoData): The base choreography data to compare against.
         compare_choreo (list[dict[str, object]]): The preprocessed choreography frames to compare with (use frame processor).
     Returns:
-        tuple[list[ScoredFrame], float]: A list of scored frames and a general similarity score (between 0 and 1).
+        tuple[list[ScoredFrame], float]: A list of scored frames and a general similarity score (between 0 and 100).
     """
     if not base_choreo or not compare_choreo:
         raise ValueError("Both base_choreo and compare_choreo must be non-empty lists.")
@@ -293,4 +293,4 @@ def compare_choreos(base_choreo: list[ChoreoFrame],
         else 0.0
     )
 
-    return scored_frames, final_score
+    return scored_frames, int(final_score * 100)

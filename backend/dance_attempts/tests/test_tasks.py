@@ -19,6 +19,7 @@ class AnalyseAttemptTaskTests(TestCase):
             published_at='2026-11-08T12:00:00Z',
             visibility='public',
             analysis_status=AnalysisStatus.DONE,
+            json_analysis={'reference': 'data'},
         )
         self.attempt = DanceAttempt.objects.create(
             user=self.user,
@@ -31,7 +32,7 @@ class AnalyseAttemptTaskTests(TestCase):
     @patch('dance_attempts.tasks.run_score_analysis')
     def test_analyse_attempt_success(self, mock_run_score_analysis):
         # GIVEN the run_score_analysis function returns a valid score and details
-        mock_run_score_analysis.return_value = (95, {'frames': [0.95]})
+        mock_run_score_analysis.return_value = ([{'score': 0.95}], 95)
 
         # WHEN the Celery worker runs the task
         analyse_attempt(self.attempt.pk)
@@ -40,10 +41,13 @@ class AnalyseAttemptTaskTests(TestCase):
         self.attempt.refresh_from_db()
         self.assertEqual(self.attempt.status, AnalysisStatus.DONE)
         self.assertEqual(self.attempt.score, 95)
-        self.assertEqual(self.attempt.score_details, {'frames': [0.95]})
+        self.assertEqual(self.attempt.score_details, [{'score': 0.95}])
         
         # AND verify the method was called correctly with the attempt's data
-        mock_run_score_analysis.assert_called_once_with({'some': 'data'})
+        mock_run_score_analysis.assert_called_once_with(
+            {'reference': 'data'},
+            {'some': 'data'},
+        )
 
     @patch('dance_attempts.tasks.run_score_analysis')
     def test_analyse_attempt_handles_failure(self, mock_run_score_analysis):
