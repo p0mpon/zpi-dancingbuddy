@@ -24,8 +24,8 @@ from videos.models import AnalysisStatus, Video
 class DanceAttemptServiceTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.user = User.objects.create_user(username='dancer')
-        self.other_user = User.objects.create_user(username='other')
+        self.user = User.objects.create_user(username='dancer', nickname='dancer')
+        self.other_user = User.objects.create_user(username='other', nickname='other')
         self.public_video = Video.objects.create(
             owner=self.user,
             title='Fancy',
