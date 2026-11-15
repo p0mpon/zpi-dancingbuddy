@@ -54,7 +54,7 @@ Last updated: 2026-11-12.
 | D4.2 | Library search and filters | 🆕 | 🟡 ⚠️ |
 | D4.3 | `times_played` | 🆕 | 🟡 ⚠️ |
 | D4.4 | Access to public videos | 🗂️ | 🟡 ⚠️ |
-| D5.1 | Like endpoints + computed counts | 🗂️ | 🟡 ⚠️ |
+| D5.1 | Like endpoints + stored count | 🗂️ | 🟡 ⚠️ |
 | D5.2 | Like rules + liked list | 🗂️ | 🟡 ⚠️ |
 | D6.1 | Creating an attempt | 🗂️ | 🟢 ⚠️ |
 | D6.2 | Attempt fields + score | 🗂️ | 🟡 ⚠️ |
@@ -344,7 +344,8 @@ no difficulty. Unpublishing clears `published_at` and keeps the likes.
 **Change:** ~~`title`, `songTitle`, `songArtist`, `authorUsername` filters~~ → **one `search` + `difficulty` + `author`**.
 More filters (e.g. dance style, BPM from audio analysis) can be added later as optional params without breaking the contract.
 
-⚠️ `ordering=likes` / `ordering=played` sort by counts computed per request (D4.3, D5.1), not by stored columns.
+⚠️ `ordering=played` sorts by a count computed per request (D4.3). `ordering=likes` sorts by the stored
+`VIDEO.likes_count` column (D5.1) and uses the `(visibility, likes_count)` index.
 
 ### 🟡 D4.3 🆕 `times_played`
 **Point:** the spec added a play counter without saying what a "play" is.
@@ -389,15 +390,24 @@ in sync with VIDEO_LIKE.
 **Solution:**
 - `PUT /api/library/{id}/like/` and `DELETE /api/library/{id}/like/`, idempotent → 200 `{likes_count, liked_by_me}`;
   liking a video that isn't public → 404
-- everything is based on **VIDEO_LIKE**: `likes_count` = `COUNT(VIDEO_LIKE)` and `liked_by_me` = `EXISTS(VIDEO_LIKE for me)`,
-  both **computed per request** (`annotate`), with no stored counter
+- `likes_count` is the **stored column `VIDEO.likes_count`**. Only `likes.services` (`like_video` / `unlike_video`)
+  change it, with `F('likes_count') ± 1` in the same transaction as the VIDEO_LIKE insert / delete, and only when a
+  row was really created / deleted (idempotent)
+- `liked_by_me` = `EXISTS(VIDEO_LIKE for me)`, computed per request (`annotate`)
 - `likes_count` and `liked_by_me` in library DTOs; `likes_count` in my-video DTOs
 
-**Change:** ~~stored `VIDEO.likes_count` kept in sync with `F() ± 1`~~ → **computed from VIDEO_LIKE**.
+**Change:** ~~computed per request from VIDEO_LIKE, drop the `VIDEO.likes_count` column~~ → **stored column, synced by
+`likes.services`, re-synced later by a worker** (decided in DAN-110). The column, its `>= 0` check constraint and the
+`video_library_likes_idx` index from DAN-101 stay, and so does the v2 rule "`likes_count` changes only together with a
+VIDEO_LIKE insert/delete".
 
-⚠️ The VIDEO_LIKE model isn't implemented.
-⚠️ DAN-101 already added the `Video.likes_count` column, its `>= 0` check constraint and the `video_library_likes_idx` index.
-Drop all three in a migration, and drop the v2 rule "`likes_count` changes only together with a VIDEO_LIKE insert/delete".
+Implemented in DAN-110 (data layer only): the `likes` app with the `VideoLike` model and the two services. The
+endpoints, `liked_by_me` and the visibility check (404 for a video that isn't public) come in DAN-141; the services
+take an already-allowed user + video.
+
+⚠️ Accepted drift: deleting a **user** CASCADE-deletes their likes without decrementing `likes_count` on the videos
+they liked (the same happens when a like is deleted in the Django admin). A future worker will re-sync `likes_count`
+from `COUNT(VIDEO_LIKE)` (separate ticket).
 
 ### 🟡 D5.2 🗂️ Like rules and the liked list
 **Point:** v2 asked whether own videos can be liked and whether there's a "liked videos" list.
@@ -561,7 +571,7 @@ If a public landing page is wanted later, open `GET /api/library/` (`scope=all` 
 | `USER.display_name` → `USER.nickname` (public, unique, required, max 32) | D2.1 |
 | keep `USER.avatar` (convention); rename the code field `User.thumbnail` → `avatar` later | D2.5 |
 | no `VIDEO.times_played` column: computed as `COUNT(DANCE_ATTEMPT)`; add an index on `DANCE_ATTEMPT.reference_video_id` | D4.3 |
-| drop `VIDEO.likes_count` (+ its constraint, index and sync rule): computed as `COUNT(VIDEO_LIKE)` | D5.1 |
+| keep `VIDEO.likes_count` (+ its constraint, index and sync rule); note the user-deletion drift and the future re-sync worker | D5.1 |
 | "The library" section: add the liked list (`/api/library/liked/`) | D5.2 |
 | DANCE_ATTEMPT can be deleted by its owner (hard delete, recording file removed via `post_delete`) | D6.8 |
 | `DANCE_ATTEMPT.score` int 0–100 (was float) | D6.2 |
