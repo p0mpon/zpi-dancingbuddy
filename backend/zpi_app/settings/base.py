@@ -134,6 +134,8 @@ AUTH_USER_MODEL = 'accounts.User'
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        # Django's default list has email / first_name / last_name (always empty here), not nickname.
+        'OPTIONS': {'user_attributes': ('username', 'nickname')},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
@@ -189,7 +191,7 @@ STORAGES = {
 REST_FRAMEWORK = {
     # Session auth = the browser's login cookie + CSRF token. Works with <video src>.
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        'accounts.authentication.SessionAuthentication',
     ],
     # Secure by default: every endpoint requires login unless it opts out.
     'DEFAULT_PERMISSION_CLASSES': [
@@ -197,6 +199,29 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 20,
+    # Per-IP limits for the endpoints that guess passwords / codes (D1.2), used by views with
+    # ScopedRateThrottle + throttle_scope. Counters live in the cache (CACHES below).
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '5/min',
+        'register': '3/min',
+        'password_reset': '5/min',
+    },
+    # How many reverse proxies stand in front of Django. With a proxy, every request comes from the
+    # proxy's IP, so all users would share one limit; set this so the IP is read from X-Forwarded-For.
+    # Unset (None) = use REMOTE_ADDR (no proxy, e.g. the dev server).
+    'NUM_PROXIES': int(env("DRF_NUM_PROXIES", "")) if env("DRF_NUM_PROXIES", "") else None,
+}
+
+
+# Cache: shared by all server processes, so the rate limits above count across workers.
+# Redis DB 1 (Celery uses DB 0). test.py swaps in an in-memory cache.
+# https://docs.djangoproject.com/en/6.1/topics/cache/#redis
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': env("CACHE_URL", "redis://redis:6379/1"),
+    },
 }
 
 

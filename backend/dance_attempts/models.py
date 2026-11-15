@@ -64,4 +64,4 @@ class DanceAttempt(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user.username}'s attempt at {self.reference_title}"
+        return f"{self.user.nickname}'s attempt at {self.reference_title}"
