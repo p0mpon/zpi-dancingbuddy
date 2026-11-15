@@ -1,5 +1,4 @@
-from django.core import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework import serializers
 
 
 ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm']
@@ -39,4 +38,4 @@ def parse_positive_int_param(value, param_name="parameter"):
             raise ValueError
         return val
     except (ValueError, TypeError):
-        raise ValidationError({param_name: "Must be a positive integer."})
+        raise serializers.ValidationError({param_name: "Must be a positive integer."})
