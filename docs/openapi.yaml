@@ -925,6 +925,26 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/NotFailed'
+  
+  /api/dance-attempts/{attempt_id}/status/:
+    parameters:
+      - $ref: '#/components/parameters/attemptId'
+    get:
+      operationId: getDanceAttemptStatus
+      tags: [Dance Attempts]
+      summary: Get the analysis status of one of my attempts
+      description: Poll this until `status` is `done` or `failed`.
+      responses:
+        '200':
+          description: Attempt status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DanceAttemptStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 components:
   securitySchemes:
@@ -1409,6 +1429,13 @@ components:
           type: string
           format: json
           description: JSON output of the MediaPipe model run on the live recording. Contains a list of frames.
+
+    DanceAttemptStatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/AttemptStatus'
 
     # ------------------------------------------------------------ Pagination
     Page:
