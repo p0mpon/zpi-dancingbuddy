@@ -156,7 +156,7 @@ class VideoApiTests(APITestCase):
 
     def test_upload_rejects_too_large_file(self):
         # Shrink the limit to 4 bytes instead of building a 500 MB file.
-        with mock.patch('videos.serializers.MAX_VIDEO_SIZE_BYTES', 4):
+        with mock.patch('core.validators.MAX_VIDEO_SIZE_BYTES', 4):
             response = self.upload(title='Too big', file=video_file(content=b'12345'))
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('file', response.data)
