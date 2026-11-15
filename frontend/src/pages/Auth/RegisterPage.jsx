@@ -6,8 +6,8 @@ import {useAuth} from "../../context/AuthContext";
 export default function RegisterPage() {
 
     const [formData, setFormData] = useState({
+        nickname: '',
         username: '',
-        email: '',
         password: '',
         confirmPassword: ''
     });
@@ -24,9 +24,9 @@ export default function RegisterPage() {
         e.preventDefault();
         setError('');
 
-        const { username, email, password, confirmPassword } = formData;
+        const { nickname, username, password, confirmPassword } = formData;
 
-        if (!username || !email || !password || !confirmPassword) {
+        if (!nickname || !username || !password || !confirmPassword) {
             setError('Please fill in all fields.');
             return;
         }
@@ -35,10 +35,10 @@ export default function RegisterPage() {
             setError('Passwords do not match.');
         }
         try {
-            await register({ email, password });
+            await register({ username, password });
             navigate('/');
         } catch (err) {
-            setError("Login invalid");
+            setError("Username invalid");
         }
     };
 
@@ -53,25 +53,25 @@ export default function RegisterPage() {
                     {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
                     <Form onSubmit={handleSubmit}>
-                        <Form.Group className="mb-3" controlId="regusername">
-                            <Form.Label className="text-muted-light small" column>Username</Form.Label>
+                        <Form.Group className="mb-3" controlId="regnickname">
+                            <Form.Label className="text-muted-light small" column>Nickname</Form.Label>
                             <Form.Control
                                 type="text"
-                                name="username"
-                                placeholder="Alex_Dev"
-                                value={formData.username}
+                                name="nickname"
+                                placeholder=""
+                                value={formData.nickname}
                                 onChange={handleChange}
                                 className="bg-dark text-light border-secondary"
                             />
                         </Form.Group>
 
-                        <Form.Group className="mb-3" controlId="regEmail">
-                            <Form.Label className="text-muted-light small" column>Email Address</Form.Label>
+                        <Form.Group className="mb-3" controlId="regUsername">
+                            <Form.Label className="text-muted-light small" column>Username</Form.Label>
                             <Form.Control
-                                type="email"
-                                name="email"
-                                placeholder="name@example.com"
-                                value={formData.email}
+                                type="text"
+                                name="username"
+                                placeholder=""
+                                value={formData.username}
                                 onChange={handleChange}
                                 className="bg-dark text-light border-secondary"
                             />

@@ -7,5 +7,5 @@ export default function LoginRequiredRoute() {
 
     if (loading) return <div>Loading...</div>;
 
-    return user?.email ? <Outlet /> : <Navigate to="/login" replace />;
+    return user?.username ? <Outlet /> : <Navigate to="/login" replace />;
 }

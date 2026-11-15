@@ -4,7 +4,7 @@ import {Link, useNavigate} from 'react-router-dom';
 import {useAuth} from "../../context/AuthContext";
 
 export function LoginPage() {
-    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     
@@ -15,11 +15,11 @@ export function LoginPage() {
         e.preventDefault();
         setError('');
         
-        if (!email || !password) {
+        if (!username || !password) {
             setError('Fill in all fields');
         }
         try {
-            await login({ email, password });
+            await login({ username, password });
             navigate('/');
         } catch (err) {
             setError("Login invalid");
@@ -38,13 +38,13 @@ export function LoginPage() {
                     {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
 
                     <Form onSubmit={handleSubmit}>
-                        <Form.Group className="mb-3" controlId="loginEmail">
-                            <Form.Label className="text-muted-light small" column>Email Address</Form.Label>
+                        <Form.Group className="mb-3" controlId="loginusername">
+                            <Form.Label className="text-muted-light small" column>Username</Form.Label>
                             <Form.Control
                                 // type="email"
                                 placeholder="name@example.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
                                 className="bg-dark text-light border-secondary"
                             />
                         </Form.Group>

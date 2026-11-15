@@ -1,9 +1,20 @@
-import {authApi, defaultApi} from "./axios_instances";
+import {api} from "./axios_instances";
 import {API_ENDPOINTS} from "./endpoints";
+import {DANCE_ATTEMPT_PAGE_LIMIT, MAIN_PAGE_LIMIT} from "../utils/pagination";
 
-export async function getAllVideos(){
+export async function getAllVideos(searchQuery, difficulty, nextUrl) {
     try {
-        const response = await defaultApi.get(API_ENDPOINTS.videos)
+        if (nextUrl) {
+            const response = await api.get(nextUrl)
+            return response.data;
+        }
+        const params = {};
+
+        params.limit = MAIN_PAGE_LIMIT;
+        if (searchQuery) params.search = searchQuery;
+        if (difficulty) params.difficulty = difficulty;
+
+        const response = await api.get(API_ENDPOINTS.videos, {params});
         return response.data;
     } catch (e) {
         console.error(e);
@@ -11,10 +22,10 @@ export async function getAllVideos(){
     }
 }
 
-export async function postVideo(video){
+export async function uploadNewVideo(video) {
     try {
         console.log(process.env.REACT_APP_API_URL)
-        const response = await defaultApi.post(API_ENDPOINTS.videos, video)
+        const response = await api.post(API_ENDPOINTS.my_videos, video)
         return response.data;
     } catch (e) {
         console.error("error details:", e.response?.data);
@@ -22,9 +33,9 @@ export async function postVideo(video){
     }
 }
 
-export async function getVideo(id){
+export async function getVideoDetails(id) {
     try {
-        const response = await defaultApi.get(API_ENDPOINTS.video_details(id))
+        const response = await api.get(API_ENDPOINTS.video_details(id))
         return response.data;
     } catch (e) {
         console.error(e);
@@ -32,10 +43,10 @@ export async function getVideo(id){
     }
 }
 
-export async function getFullVideo(id){
+export async function getFullVideo(id) {
     try {
-        const response = await defaultApi.get(API_ENDPOINTS.video_details(id))
-        const stream_response = await defaultApi.get(API_ENDPOINTS.video_stream(id), {
+        const response = await api.get(API_ENDPOINTS.video_details(id))
+        const stream_response = await api.get(API_ENDPOINTS.video_stream(id), {
             responseType: 'blob'
         });
 
@@ -51,9 +62,9 @@ export async function getFullVideo(id){
     }
 }
 
-export async function editVideo(id, videoData){
+export async function editVideo(id, videoData) {
     try {
-        const response = await defaultApi.put(API_ENDPOINTS.video_details(id, videoData))
+        const response = await api.put(API_ENDPOINTS.video_details(id, videoData))
         return response.data;
     } catch (e) {
         console.error(e);
@@ -61,9 +72,9 @@ export async function editVideo(id, videoData){
     }
 }
 
-export async function deleteVideo(id){
+export async function deleteVideo(id) {
     try {
-        const response = await defaultApi.delete(API_ENDPOINTS.video_details(id))
+        const response = await api.delete(API_ENDPOINTS.video_details(id))
         return response.data;
     } catch (e) {
         console.error(e);
@@ -73,9 +84,9 @@ export async function deleteVideo(id){
 
 //--- auth endpoints ---
 
-export async function loginUser (username, password) {
+export async function loginUser(username, password) {
     try {
-        const response = await authApi.post('login/', {
+        const response = await api.post(API_ENDPOINTS.login, {
             username: username,
             password: password
         });
@@ -85,12 +96,28 @@ export async function loginUser (username, password) {
     }
 }
 
-export async function getUser(id){
+export async function getUser(nickname) {
     try {
-        const response = await authApi.get(API_ENDPOINTS.user)
+        const response = await api.get(API_ENDPOINTS.public_profile(nickname))
         return response.data;
-    } catch (error){
+    } catch (error) {
         return false;
     }
 }
 
+export async function getDanceAttemptsForVideo(video_id, nextUrl) {
+    try {
+        if (nextUrl) {
+            const response = await api.get(nextUrl)
+            return response.data;
+        }
+        const params = {};
+
+        params.limit = DANCE_ATTEMPT_PAGE_LIMIT;
+        const response = await api.get(API_ENDPOINTS.video_dance_attempts(video_id), {params})
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}

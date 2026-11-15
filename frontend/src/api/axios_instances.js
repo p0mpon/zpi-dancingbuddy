@@ -1,7 +1,7 @@
 import axios from "axios";
 
 
-export const defaultApi = axios.create({
+export const api = axios.create({
     baseURL: `${process.env.REACT_APP_API_URL}/api/`,
     withCredentials: true,
     timeout: 5000,
@@ -13,9 +13,13 @@ export const defaultApi = axios.create({
     }
 });
 
-export const authApi = axios.create({
-    baseURL: `${process.env.REACT_APP_API_URL}/api-auth/`,
-    withCredentials: true,
-    xsrfCookieName: 'csrftoken',
-    xsrfHeaderName: 'X-CSRFToken',
-});
+axios.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        if (error.response && (error.response?.data?.error_code === 'TOKEN_EXPIRED')) {
+            localStorage.removeItem('csrftoken');
+            window.location.href = '/';
+        }
+        return Promise.reject(error);
+    }
+);
