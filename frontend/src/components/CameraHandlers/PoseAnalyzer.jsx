@@ -198,9 +198,36 @@ export default function usePoseAnalyzer(videoRef, onRecordingComplete, onAnalyze
                     ? (leftAnkle2D.y < 0.98 && rightAnkle2D.y < 0.98)
                     : false;
 
+                // Add Global Position Math for Live Scoring
+                let hip_height = null;
+                let hip_rotation = null;
+
+                const nose2D = activeImage?.[0];
+                const leftHip2D = activeImage?.[23];
+                const rightHip2D = activeImage?.[24];
+
+                // Calculate proportional jump height using 2D screen coordinates
+                if (nose2D && leftHip2D && rightHip2D && leftAnkle2D && rightAnkle2D) {
+                    const midHipY = (leftHip2D.y + rightHip2D.y) / 2.0;
+                    const bodyHeight = Math.max(leftAnkle2D.y, rightAnkle2D.y) - nose2D.y;
+                    if (bodyHeight > 0.1) {
+                        hip_height = midHipY / bodyHeight;
+                    }
+                }
+
+                const leftHip3D = activeWorld?.[23];
+                const rightHip3D = activeWorld?.[24];
+
+                // Calculate body rotation using 3D world depth coordinates
+                if (leftHip3D && rightHip3D) {
+                    const dx = leftHip3D.x - rightHip3D.x;
+                    const dz = leftHip3D.z - rightHip3D.z;
+                    hip_rotation = Math.atan2(dz, dx) * (180 / Math.PI);
+                }
+
                 const isFullyVisible = (visibleJointsCount === totalConfiguredJoints) && anklesOnScreen;
 
-                const liveFrameData = { timestamp, joints, isFullyVisible };
+                const liveFrameData = { timestamp, joints, isFullyVisible, hip_height, hip_rotation };
                 previousLiveFrameRef.current = liveFrameData;
 
                 onFrameAnalyzedRef.current(liveFrameData);

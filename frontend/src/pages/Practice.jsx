@@ -3,6 +3,7 @@ import { Button, Spinner, Modal } from 'react-bootstrap';
 import { useLocation, useNavigate } from "react-router-dom";
 import CameraRecorder from '../components/CameraHandlers/CameraRecorder';
 import { postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus } from "../api/calls";
+import { compareLiveFrames } from '../components/CameraHandlers/LiveScoring';
 
 export default function Practice() {
     const navigate = useNavigate();
@@ -14,7 +15,13 @@ export default function Practice() {
     const lastFeedbackTextRef = useRef("");
     const localVideoUrlRef = useRef(null);
 
-    // Camera states
+    // Sliding window buffer refs
+    const liveFrameBufferRef = useRef([]);
+    const nextChoreoIndexRef = useRef(0);
+
+    // Debug Tracker (Invisible to user, highly useful for your next branch)
+    const debugLossAccumulatorRef = useRef({ angle: 0, velocity: 0, acceleration: 0, hipHeight: 0, hipRotation: 0 });
+
     const [isCameraReady, setIsCameraReady] = useState(false);
     const [cameraError, setCameraError] = useState(null);
 
@@ -23,18 +30,14 @@ export default function Practice() {
     const [countdown, setCountdown] = useState(3);
 
     const [referenceAnalysis, setReferenceAnalysis] = useState(null);
-
-    // States for asynchronous processing
     const [taskId, setTaskId] = useState(null);
 
     const currentVideo = location.state?.currentVideo;
 
-    // State tracker
     useEffect(() => {
         practiceStateRef.current = practiceState;
     }, [practiceState]);
 
-    // Fetch analysis json for the video
     useEffect(() => {
         if (currentVideo?.id) {
             getVideoAnalysis(currentVideo.id)
@@ -43,7 +46,6 @@ export default function Practice() {
         }
     }, [currentVideo?.id]);
 
-    // Practice countdown
     useEffect(() => {
         let timer;
         if (practiceState === 'countdown' && countdown > 0) {
@@ -56,24 +58,16 @@ export default function Practice() {
         return () => clearTimeout(timer);
     }, [practiceState, countdown]);
 
-    // Polling loop for backend processing
     useEffect(() => {
         let pollInterval;
-
         if (practiceState === 'processing' && taskId) {
             pollInterval = setInterval(async () => {
                 try {
                     const result = await getDanceAttemptStatus(taskId);
-
                     if (result && result.status === 'completed') {
                         clearInterval(pollInterval);
-
-                        // Navigate to the new page and inject the data to prevent another API call
                         navigate(`/score/${result.data.attempt_id}`, {
-                            state: {
-                                scoreData: result.data,
-                                localVideoUrl: localVideoUrlRef.current
-                            }
+                            state: { scoreData: result.data, localVideoUrl: localVideoUrlRef.current }
                         });
                     } else if (result && result.status === 'failed') {
                         clearInterval(pollInterval);
@@ -83,20 +77,20 @@ export default function Practice() {
                 } catch (error) {
                     console.error("Error polling score:", error);
                 }
-            }, 2000); // Poll every 2 seconds
+            }, 2000);
         }
-
-        return () => {
-            if (pollInterval) clearInterval(pollInterval);
-        };
+        return () => { if (pollInterval) clearInterval(pollInterval); };
     }, [practiceState, taskId, navigate]);
 
     const handleStartPractice = () => {
         setCountdown(3);
         setState('positioning');
+        liveFrameBufferRef.current = [];
+        nextChoreoIndexRef.current = 0;
+        lastFeedbackTextRef.current = "";
+        debugLossAccumulatorRef.current = { angle: 0, velocity: 0, acceleration: 0, hipHeight: 0, hipRotation: 0 };
     };
 
-    // Camera and recording handlers
     const handleCameraReady = useCallback(() => {
         setIsCameraReady(true);
         setCameraError(null);
@@ -106,68 +100,111 @@ export default function Practice() {
         setCameraError(error);
     }, []);
 
-    // Frame analysis handler
     const handleFrameAnalyzed = useCallback((liveFrameData) => {
         if (practiceStateRef.current === 'positioning' && liveFrameData.isFullyVisible) {
             setState('countdown');
             return;
         }
 
-        if (practiceStateRef.current === 'recording' && feedbackOverlayRef.current) {
-            // Placeholder. TODO: Implement scoring
+        if (practiceStateRef.current === 'recording') {
+            liveFrameBufferRef.current.push(liveFrameData);
+            const currentTime = referenceVideoRef.current?.currentTime || liveFrameData.timestamp;
 
-            const totalVelocity = liveFrameData.joints ? Object.values(liveFrameData.joints).reduce(
-                (sum, j) => sum + Math.abs(j.angular_velocity), 0
-            ) : 0;
+            while (liveFrameBufferRef.current.length > 0 && liveFrameBufferRef.current[0].timestamp < currentTime - 1.0) {
+                liveFrameBufferRef.current.shift();
+            }
 
-            let newFeedback = "";
-            if (totalVelocity > 300) newFeedback = "Perfect!";
-            else if (totalVelocity > 150) newFeedback = "Great!";
-            else if (totalVelocity > 50) newFeedback = "Good";
+            if (referenceAnalysis && nextChoreoIndexRef.current < referenceAnalysis.length) {
+                const choreoFrame = referenceAnalysis[nextChoreoIndexRef.current];
+                const windowEnd = choreoFrame.timestamp_sec + 0.2;
 
-            if (newFeedback !== lastFeedbackTextRef.current) {
-                lastFeedbackTextRef.current = newFeedback;
-                feedbackOverlayRef.current.innerText = newFeedback;
-                feedbackOverlayRef.current.className = `display-4 fw-bold text-white text-uppercase text-shadow ${newFeedback ? 'bounce-animation' : ''}`;
+                if (currentTime > windowEnd) {
+                    const framesInWindow = liveFrameBufferRef.current.filter(
+                        f => Math.abs(f.timestamp - choreoFrame.timestamp_sec) <= 0.2
+                    );
+
+                    let bestScore = -Infinity;
+                    let bestBreakdown = null;
+
+                    for (const userFrame of framesInWindow) {
+                        const result = compareLiveFrames(choreoFrame, userFrame);
+                        if (result.score > bestScore) {
+                            bestScore = result.score;
+                            bestBreakdown = result.breakdown;
+                        }
+                    }
+
+                    if (bestScore !== -Infinity) {
+                        if (bestBreakdown) {
+                            debugLossAccumulatorRef.current.angle += bestBreakdown.angle;
+                            debugLossAccumulatorRef.current.velocity += bestBreakdown.velocity;
+                            debugLossAccumulatorRef.current.acceleration += bestBreakdown.acceleration;
+                            debugLossAccumulatorRef.current.hipHeight += bestBreakdown.hipHeight;
+                            debugLossAccumulatorRef.current.hipRotation += bestBreakdown.hipRotation;
+                        }
+
+                        if (choreoFrame.audio_context.is_beat || choreoFrame.audio_context.is_onset) {
+                            let newFeedback = "";
+
+                            // ORIGINAL STRICT THRESHOLDS
+                            if (bestScore >= 0.85) newFeedback = "Perfect!";
+                            else if (bestScore >= 0.70) newFeedback = "Great!";
+                            else if (bestScore >= 0.50) newFeedback = "Good";
+
+                            if (newFeedback !== lastFeedbackTextRef.current && feedbackOverlayRef.current) {
+                                lastFeedbackTextRef.current = newFeedback;
+                                feedbackOverlayRef.current.innerText = newFeedback;
+
+                                feedbackOverlayRef.current.classList.remove('bounce-animation');
+                                void feedbackOverlayRef.current.offsetWidth;
+                                feedbackOverlayRef.current.className = `display-4 fw-bold text-white text-uppercase text-shadow ${newFeedback ? 'bounce-animation' : ''}`;
+                            }
+                        }
+                    }
+                    nextChoreoIndexRef.current++;
+                }
             }
         }
-    }, []);
+    }, [referenceAnalysis]);
 
-    // End recording and feedback when video ends
     const handleReferenceVideoEnded = () => {
         setState('processing');
         if (cameraRecorderRef.current) cameraRecorderRef.current.stopRecording();
         if (feedbackOverlayRef.current) feedbackOverlayRef.current.innerText = "";
     };
 
-    // Submit attempt and await task ID
     const handleRecordingSubmission = useCallback(async ({ frames, videoBlob }) => {
-    if (!currentVideo?.id) return;
-    try {
-        // Create a local browser URL for the video so the score page can play it
-        localVideoUrlRef.current = URL.createObjectURL(videoBlob);
+        if (!currentVideo?.id) return;
 
-        const response = await postDanceAttempt(currentVideo.id, frames, videoBlob);
-
-        if (response.task_id) {
-            setTaskId(response.task_id);
-        } else {
-            navigate(`/score/${response.id}`, {
-                state: {
-                    scoreData: response,
-                    localVideoUrl: localVideoUrlRef.current
-                }
-            });
+        // Print the diagnostic report to console before submission
+        const losses = debugLossAccumulatorRef.current;
+        console.log("========== LIVE SCORING DEBUG REPORT ==========");
+        console.table(losses);
+        const totalLoss = Object.values(losses).reduce((sum, val) => sum + val, 0);
+        if (totalLoss > 0) {
+            const maxLossParam = Object.keys(losses).reduce((a, b) => losses[a] > losses[b] ? a : b);
+            console.log(`❌ BIGGEST SCORE KILLER: ${maxLossParam.toUpperCase()} (Total points lost: ${losses[maxLossParam].toFixed(2)})`);
         }
-    } catch (error) {
-        console.error("Failed to submit practice attempt:", error);
-        setState('idle');
-    }
-}, [currentVideo?.id, navigate]);
+        console.log("===============================================");
 
-    if (!currentVideo) {
-        return <div className="p-5 text-danger">Video not found!</div>;
-    }
+        try {
+            localVideoUrlRef.current = URL.createObjectURL(videoBlob);
+            const response = await postDanceAttempt(currentVideo.id, frames, videoBlob);
+            if (response.task_id) {
+                setTaskId(response.task_id);
+            } else {
+                navigate(`/score/${response.id}`, {
+                    state: { scoreData: response, localVideoUrl: localVideoUrlRef.current }
+                });
+            }
+        } catch (error) {
+            console.error("Failed to submit practice attempt:", error);
+            setState('idle');
+        }
+    }, [currentVideo?.id, navigate]);
+
+    if (!currentVideo) return <div className="p-5 text-danger">Video not found!</div>;
+
     return (
         <div className="position-relative w-100 bg-black overflow-hidden rounded-bottom-4" style={{ height: '100vh' }}>
             <video
