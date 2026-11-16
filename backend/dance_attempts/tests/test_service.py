@@ -192,6 +192,8 @@ class DanceAttemptServiceTests(TestCase):
             reference_title=self.public_video.title,
             recording=recording,
         )
+        # Kept in variables: after .delete() Django sets attempt.pk to None.
+        attempt_id = attempt.pk
         recording_name = attempt.recording.name
         recording_storage = attempt.recording.storage
 
@@ -199,10 +201,17 @@ class DanceAttemptServiceTests(TestCase):
         self.assertTrue(recording_storage.exists(recording_name))
 
         # WHEN we call delete_attempt
-        delete_attempt(attempt=attempt)
+        # The file is removed by the post_delete signal, which waits for the commit. A TestCase
+        # never commits, so captureOnCommitCallbacks collects the callbacks and runs them on exit.
+        with self.captureOnCommitCallbacks(execute=True):
+            delete_attempt(attempt=attempt)
 
-        # THEN the DanceAttempt should be deleted and the recording file should no longer exist
-        self.assertFalse(DanceAttempt.objects.filter(pk=attempt.pk).exists())
+            # THEN the row is deleted, but the file is still there until the commit
+            # (so a rollback would keep both the row and its recording)
+            self.assertFalse(DanceAttempt.objects.filter(pk=attempt_id).exists())
+            self.assertTrue(recording_storage.exists(recording_name))
+
+        # AND after the commit the recording file no longer exists
         self.assertFalse(recording_storage.exists(recording_name))
 
     def test_reanalyze_attempt_resets_failed_attempt_and_queues_analysis(self):
