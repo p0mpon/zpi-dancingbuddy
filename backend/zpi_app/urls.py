@@ -18,10 +18,11 @@ from accounts.views import (
     UserViewSet,
 )
 from dance_attempts.views import DanceAttemptViewSet
-from videos.views import VideoViewSet
+from videos.views import LibraryViewSet, VideoViewSet
 
 router = DefaultRouter()
 router.register('dance-attempts', DanceAttemptViewSet, basename='dance-attempt')
+router.register('library', LibraryViewSet, basename='library')
 router.register('videos', VideoViewSet, basename='video')
 # /users/me/... (detail=False actions) are matched before /users/{nickname}/.
 router.register('users', UserViewSet, basename='user')

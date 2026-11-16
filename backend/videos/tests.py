@@ -8,10 +8,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import AnalysisStatus, Video
+from dance_attempts.models import DanceAttempt
+
+from .models import AnalysisStatus, Difficulty, Video, Visibility
 from .streaming import RangeNotSatisfiable, parse_range_header
 from .tasks import analyse_video
 
@@ -69,6 +72,14 @@ class VideoApiTests(APITestCase):
     def upload(self, **data):
         return self.client.post('/api/videos/', data, format='multipart')
 
+    def others_public_video(self):
+        """A published video of the other user, with a real file (for stream / analysis)."""
+        return Video.objects.create(
+            owner=self.other, title='Public tango', path_to_resource=video_file('public.mp4'), file_size=16.0,
+            analysis_status=AnalysisStatus.DONE, json_analysis=fake_frames(seconds=1),
+            difficulty=Difficulty.BEGINNER, visibility=Visibility.PUBLIC, published_at=timezone.now(),
+        )
+
     def test_requires_login(self):
         self.client.force_authenticate(None)
         # 401, not DRF's default 403: accounts.authentication.SessionAuthentication (D7.5).
@@ -80,15 +91,71 @@ class VideoApiTests(APITestCase):
 
     # ==== LIST / RETRIEVE
 
+    def listed_ids(self, **params):
+        response = self.client.get('/api/videos/', params)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        return [video['id'] for video in response.data['results']]
+
     def test_list_only_own_videos_newest_first(self):
-        response = self.client.get('/api/videos/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual([video['id'] for video in response.data], [self.pending.pk, self.analysed.pk])
+        # Another user's public video is in the library, but never in "my uploads".
+        self.others_public_video()
+        self.assertEqual(self.listed_ids(), [self.pending.pk, self.analysed.pk])
+
+    def test_list_is_paginated(self):
+        response = self.client.get('/api/videos/', {'limit': 1})
+        self.assertEqual(set(response.data), {'count', 'next', 'previous', 'results'})
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual([video['id'] for video in response.data['results']], [self.pending.pk])
+        self.assertIsNone(response.data['previous'])
+
+        second_page = self.client.get(response.data['next'])
+        self.assertEqual([video['id'] for video in second_page.data['results']], [self.analysed.pk])
+        self.assertIsNone(second_page.data['next'])
+
+    def test_list_limit_is_capped_at_100(self):
+        Video.objects.bulk_create([
+            Video(owner=self.dancer, title=f'Bulk {number}', path_to_resource='videos/dummy.mp4', file_size=1.0)
+            for number in range(105)
+        ])
+        self.assertEqual(len(self.listed_ids()), 20)
+        self.assertEqual(len(self.listed_ids(limit=5000)), 100)
+
+    def test_list_filters(self):
+        published = Video.objects.create(
+            owner=self.dancer, title='Kizomba', path_to_resource=video_file('kizomba.mp4'), file_size=16.0,
+            song_title='Suavemente', analysis_status=AnalysisStatus.DONE, difficulty=Difficulty.ADVANCED,
+            visibility=Visibility.PUBLIC, published_at=timezone.now(),
+        )
+        self.assertEqual(self.listed_ids(analysis_status='pending'), [self.pending.pk])
+        self.assertEqual(self.listed_ids(analysis_status='done'), [published.pk, self.analysed.pk])
+        self.assertEqual(self.listed_ids(visibility='public'), [published.pk])
+        self.assertEqual(self.listed_ids(visibility='private'), [self.pending.pk, self.analysed.pk])
+        self.assertEqual(self.listed_ids(difficulty='advanced'), [published.pk])
+        self.assertEqual(self.listed_ids(search='suave'), [published.pk])
+        self.assertEqual(self.listed_ids(search='SALSA'), [self.analysed.pk])
+        self.assertEqual(self.listed_ids(author='DANCER'), [published.pk, self.pending.pk, self.analysed.pk])
+        self.assertEqual(self.listed_ids(author='other'), [])       # filters never show someone else's videos
+        self.assertEqual(self.listed_ids(visibility='public', analysis_status='pending'), [])
+
+    def test_list_ordering(self):
+        Video.objects.filter(pk=self.analysed.pk).update(likes_count=3)
+        DanceAttempt.objects.create(user=self.other, reference_video=self.analysed, reference_title='Salsa')
+        self.assertEqual(self.listed_ids(ordering='likes'), [self.analysed.pk, self.pending.pk])
+        self.assertEqual(self.listed_ids(ordering='played'), [self.analysed.pk, self.pending.pk])
+        self.assertEqual(self.listed_ids(ordering='newest'), [self.pending.pk, self.analysed.pk])
+
+    def test_list_bad_params_are_400(self):
+        for field, value in [('analysis_status', 'finished'), ('visibility', 'hidden'),
+                             ('difficulty', 'foo'), ('ordering', 'x')]:
+            with self.subTest(field=field):
+                response = self.client.get('/api/videos/', {field: value})
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(list(response.data), [field])
 
     def test_list_fields(self):
         response = self.client.get('/api/videos/')
         self.assertEqual(
-            set(response.data[0]),
+            set(response.data['results'][0]),
             {
                 'id', 'title', 'description',
                 'song_author', 'song_title', 'difficulty',
@@ -325,6 +392,51 @@ class VideoApiTests(APITestCase):
         response = self.client.get(self.url(self.others_video, 'stream/'))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_stream_other_users_public_video(self):
+        response, body = self.stream(self.others_public_video())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(body, b'fake video bytes')
+
+    def test_stream_public_video_of_inactive_owner_is_404(self):
+        video = self.others_public_video()
+        self.other.is_active = False
+        self.other.save()
+        self.assertEqual(self.client.get(self.url(video, 'stream/')).status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_stream_public_video_without_login(self):
+        # A visitor can watch a public video (D7.6), Range included...
+        public = self.others_public_video()
+        self.client.force_authenticate(None)
+
+        response, body = self.stream(public)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(body, b'fake video bytes')
+        response, body = self.stream(public, headers={'Range': 'bytes=0-3'})
+        self.assertEqual(response.status_code, status.HTTP_206_PARTIAL_CONTENT)
+        self.assertEqual(body, b'fake')
+
+    def test_stream_private_video_without_login_is_404(self):
+        # ...but nothing else: a private video is 404 (the same answer as "no such id").
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(self.url(self.analysed, 'stream/')).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.get('/api/videos/999999/stream/').status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_stream_is_the_only_video_route_open_without_login(self):
+        public = self.others_public_video()
+        self.client.force_authenticate(None)
+        for suffix in ['', 'analysis/', 'thumbnail/']:
+            with self.subTest(suffix=suffix):
+                response = self.client.get(self.url(public, suffix))
+                self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_other_users_public_video_is_still_not_mine_to_manage(self):
+        # Only stream and analysis are open to others; /api/videos/{id}/ itself stays "my uploads".
+        video = self.others_public_video()
+        self.assertEqual(self.client.get(self.url(video)).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.patch(self.url(video), {'title': 'X'}).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(self.url(video)).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.get(self.url(video, 'thumbnail/')).status_code, status.HTTP_404_NOT_FOUND)
+
     # ==== OTHER ACTIONS
 
     def test_thumbnail_not_implemented(self):
@@ -345,6 +457,12 @@ class VideoApiTests(APITestCase):
     def test_analysis_other_users_video_is_404(self):
         response = self.client.get(self.url(self.others_video, 'analysis/'))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_analysis_other_users_public_video(self):
+        video = self.others_public_video()
+        response = self.client.get(self.url(video, 'analysis/'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json(), video.json_analysis)
 
     def test_analysis_cannot_be_started_by_hand(self):
         response = self.client.post(self.url(self.analysed, 'analysis/'))

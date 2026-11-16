@@ -32,6 +32,38 @@ class AnalysisStatus(models.TextChoices):
     FAILED = 'failed', 'Failed'                     # analysis crashed; can be re-run
 
 
+class VideoQuerySet(models.QuerySet):
+    """Who may see which video. The rule is written once here and reused by every view.
+
+    Attached to the model as `objects = VideoQuerySet.as_manager()`, so these methods chain like
+    any other queryset method: `Video.objects.visible_to(user).filter(difficulty='beginner')`.
+    """
+
+    # "In the public library": published, and the owner isn't blocked (is_active).
+    # A Q object is a condition that isn't attached to a query yet, so it can be reused and OR-ed.
+    IS_PUBLIC = models.Q(visibility=Visibility.PUBLIC, owner__is_active=True)
+
+    def owned_by(self, user):
+        """`user`'s own uploads, private and public (/api/videos/, library scope=mine)."""
+        return self.filter(owner=user)
+
+    def public(self):
+        """The public library only (what can be liked)."""
+        return self.filter(self.IS_PUBLIC)
+
+    def visible_to(self, user):
+        """Everything `user` may open: the public library plus all their own videos.
+
+        `user` is request.user, so it can be a visitor who isn't logged in (Django's AnonymousUser).
+        A visitor owns nothing and sees the public library only (docs/api-decisions.md D7.6).
+        """
+        if not user.is_authenticated:
+            # AnonymousUser is not a row in the database, so `owner=user` can't be put in a query.
+            return self.public()
+        # `|` is OR. Two chained .filter() calls would mean AND, which is why Q is needed here.
+        return self.filter(self.IS_PUBLIC | models.Q(owner=user))
+
+
 class Video(models.Model):
     """VIDEO table from db/diagram/v2.md."""
 
@@ -75,6 +107,9 @@ class Video(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)        # date created_at
     updated_at = models.DateTimeField(auto_now=True)            # date updated_at
+
+    # Video.objects is still the normal manager, plus the VideoQuerySet methods above.
+    objects = VideoQuerySet.as_manager()
 
     class Meta:
         ordering = ['-created_at']      # newest first
