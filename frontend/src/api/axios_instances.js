@@ -1,25 +1,32 @@
 import axios from "axios";
-
+import {API_ENDPOINTS} from "./endpoints";
 
 export const api = axios.create({
     baseURL: `${process.env.REACT_APP_API_URL}/api/`,
     withCredentials: true,
+    withXSRFToken: true,
     timeout: 5000,
     xsrfCookieName: 'csrftoken',
     xsrfHeaderName: 'X-CSRFToken',
-    auth: {
-        username: process.env.REACT_APP_USERNAME,
-        password: process.env.REACT_APP_PASSWORD
-    }
 });
 
-axios.interceptors.response.use(
+api.interceptors.response.use(
     (response) => response,
     async (error) => {
-        if (error.response && (error.response?.data?.error_code === 'TOKEN_EXPIRED')) {
-            localStorage.removeItem('csrftoken');
-            window.location.href = '/';
+        const originalRequest = error.config;
+        console.log(originalRequest);
+
+        if (error.response?.status === 401) {
+            const ignoredEndpoints = originalRequest.url.includes(API_ENDPOINTS.login) ||
+                originalRequest.url.includes(API_ENDPOINTS.register) ||
+                originalRequest.url.includes(API_ENDPOINTS.csrf) ||
+                originalRequest.url.includes(API_ENDPOINTS.current_user);
+
+            if (!ignoredEndpoints) {
+                window.location.href = '/login';
+            }
         }
+
         return Promise.reject(error);
     }
 );

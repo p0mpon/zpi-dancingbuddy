@@ -5,6 +5,7 @@ import UserMenu from "./UserMenu";
 import {useSearchParams, Link} from "react-router-dom";
 import {DIFFICULTY_OPTIONS} from "../../utils/difficulty";
 import {ReactComponent as AppLogo} from "../../assets/ob-logo.svg";
+import {seedVideos} from "../../utils/video_seed";
 
 export default function TopBar({showSearch, onOpenUpload}) {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -127,15 +128,6 @@ export default function TopBar({showSearch, onOpenUpload}) {
                 )}
 
                 <Nav className="ms-auto align-items-center gap-3">
-                    {/*<Button*/}
-                    {/*    variant="primary"*/}
-                    {/*    onClick={seedVideos}*/}
-                    {/*    className="d-flex align-items-center gap-2 px-3 py-2 fw-semibold shadow-sm"*/}
-                    {/*>*/}
-                    {/*    <Upload size={16}/>*/}
-                    {/*    <span>Seed</span>*/}
-                    {/*</Button>*/}
-
                     <Button
                         variant="primary"
                         onClick={onOpenUpload}
