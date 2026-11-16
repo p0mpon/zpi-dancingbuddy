@@ -2,16 +2,21 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Badge, Button, Row, Col, Spinner} from 'react-bootstrap';
 import {Film} from 'react-bootstrap-icons';
 import {useNavigate, useSearchParams} from "react-router-dom";
-import {getAllVideos, getFullVideo} from "../api/calls";
-import VideoPreviewModal from "../components/Modals/VideoPreviewModal";
-import useInfiniteScroll from "../hooks/infinite_scroll";
+import {getFullVideo} from "../api/calls";
+import useInfiniteScroll from "../hooks/useInfiniteScroll";
 import VideoCard from "../components/PageContent/VideoCard";
+import {VIDEO_LIST_CONFIGS} from "../config/video_list_config";
 
 
-export default function VideoList() {
+export default function VideoList({mode}) {
+    const config = VIDEO_LIST_CONFIGS[mode] || VIDEO_LIST_CONFIGS.general;
+    const { title, fetchFunction, VideoModal, filters } = config;
+    
     const [searchParams, setSearchParams] = useSearchParams();
     const searchQuery = searchParams.get('search') || '';
     const difficultyQuery = searchParams.get('difficulty') || '';
+    const statusQuery = searchParams.get('analysis_status') || '';
+    const visibilityQuery = searchParams.get('visibility') || '';
     const navigate = useNavigate();
 
     const [videos, setVideos] = useState([]);
@@ -26,7 +31,15 @@ export default function VideoList() {
         setVideos([]);
         setNextUrl(null);
 
-        getAllVideos(searchQuery, difficultyQuery)
+        const params = {
+            search: searchParams.get('search') || '',
+            difficulty: searchParams.get('difficulty') || '',
+            analysisStatus: searchParams.get('analysis_status') || '',
+            visibility: searchParams.get('visibility') || '',
+            nextUrl: null,
+        };
+        
+        fetchFunction(params)
             .then(data => {
                 setVideos(data.results || []);
                 setNextUrl(data.next);
@@ -34,12 +47,20 @@ export default function VideoList() {
             })
             .catch(err => console.error("Failed to load videos:", err))
             .finally(() => setIsLoading(false));
-    }, [searchQuery, difficultyQuery]);
+    }, [searchQuery, difficultyQuery, statusQuery, visibilityQuery, fetchFunction]);
 
     const fetchNextPage = useCallback(() => {
         if (!nextUrl) return Promise.resolve();
 
-        return getAllVideos(searchQuery, difficultyQuery, nextUrl)
+        const params = {
+            search: searchParams.get('search') || '',
+            difficulty: searchParams.get('difficulty') || '',
+            analysisStatus: searchParams.get('analysis_status') || '',
+            visibility: searchParams.get('visibility') || '',
+            nextUrl: nextUrl,
+        };
+        
+        return fetchFunction(params)
             .then(data => {
                 const newVideos = data.results || [];
                 setVideos(prev => {
@@ -50,7 +71,7 @@ export default function VideoList() {
                 setNextUrl(data.next);
             })
             .catch(console.error);
-    }, [nextUrl, searchQuery, difficultyQuery]);
+    }, [nextUrl, searchQuery, difficultyQuery, statusQuery, visibilityQuery]);
 
     const { loaderRef, isLoadingMore } = useInfiniteScroll(fetchNextPage, !!nextUrl);
 
@@ -77,14 +98,11 @@ export default function VideoList() {
     const resetSearch = () => setSearchParams({});
 
     const showPreview = (video) => {
-        getFullVideo(video.id).then(videoData => {
-            setSelectedVideo(videoData);
-        });
         window.location.hash = `preview-${video.id}`;
     };
 
     const closePreview = () => {
-        window.history.pushState(null, '', window.location.pathname);
+        window.history.pushState(null, '', window.location.pathname + window.location.search);
         setSelectedVideo(null);
     };
 
@@ -123,8 +141,8 @@ export default function VideoList() {
                 <>
                     <Row xs={1} md={2} lg={3} className="g-4">
                         {videos.map((video) => (
-                            <Col key={video.id}>
-                                { VideoCard(video, showPreview) }
+                            <Col>
+                                <VideoCard key={video.id} mode={mode} video={video} showPreview={showPreview} />
                             </Col>
                         ))}
                     </Row>
@@ -139,7 +157,7 @@ export default function VideoList() {
                 </>
             )}
             {selectedVideo && (
-                <VideoPreviewModal
+                <VideoModal
                     previewVideo={selectedVideo}
                     onHide={closePreview}
                     switchToVideoView={switchToVideo}
