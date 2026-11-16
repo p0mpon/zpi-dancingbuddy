@@ -20,7 +20,8 @@ api.interceptors.response.use(
             const ignoredEndpoints = originalRequest.url.includes(API_ENDPOINTS.login) ||
                 originalRequest.url.includes(API_ENDPOINTS.register) ||
                 originalRequest.url.includes(API_ENDPOINTS.csrf) ||
-                originalRequest.url.includes(API_ENDPOINTS.current_user);
+                originalRequest.url.includes(API_ENDPOINTS.current_user)||
+                originalRequest.url.includes(API_ENDPOINTS.logout);
 
             if (!ignoredEndpoints) {
                 window.location.href = '/login';

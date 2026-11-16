@@ -3,7 +3,7 @@ import {Navbar, Nav, Form, InputGroup, Button, Dropdown, FormCheck} from 'react-
 import {Filter, Search, Upload} from 'react-bootstrap-icons';
 import UserMenu from "./UserMenu";
 import {useSearchParams, Link} from "react-router-dom";
-import {DIFFICULTY_OPTIONS} from "../../utils/difficulty";
+import {DIFFICULTY_OPTIONS} from "../../config/difficulty";
 import {ReactComponent as AppLogo} from "../../assets/ob-logo.svg";
 
 export default function TopBar({showSearch, onOpenUpload}) {

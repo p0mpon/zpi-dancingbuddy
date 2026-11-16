@@ -1,8 +1,8 @@
 import {api} from "./axios_instances";
 import {API_ENDPOINTS} from "./endpoints";
-import {DANCE_ATTEMPT_PAGE_LIMIT, MAIN_PAGE_LIMIT} from "../utils/pagination";
+import {DANCE_ATTEMPT_PAGE_LIMIT, MAIN_PAGE_LIMIT} from "../config/pagination";
 
-export async function getAllVideos(searchQuery, difficulty, nextUrl) {
+export async function getAllVideos({searchQuery, difficulty, nextUrl}) {
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -102,7 +102,31 @@ export async function getDanceAttemptStatus(taskId) {
 
 export async function editVideo(id, videoData) {
     try {
-        const response = await api.put(API_ENDPOINTS.video_details(id), videoData)
+        const response = await api.patch(API_ENDPOINTS.video_details(id), videoData)
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function publishVideo(id) {
+    try {
+        const response = await api.patch(API_ENDPOINTS.video_details(id), {
+            visibility: 'public'
+        });
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function privateVideo(id) {
+    try {
+        const response = await api.patch(API_ENDPOINTS.video_details(id), {
+            visibility: 'private'
+        });
         return response.data;
     } catch (e) {
         console.error(e);
@@ -113,6 +137,28 @@ export async function editVideo(id, videoData) {
 export async function deleteVideo(id) {
     try {
         const response = await api.delete(API_ENDPOINTS.video_details(id))
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getMyVideos({searchQuery, difficulty, analysisStatus, visibility, nextUrl}) {
+    try {
+        if (nextUrl) {
+            const response = await api.get(nextUrl)
+            return response.data;
+        }
+        const params = {};
+
+        params.limit = MAIN_PAGE_LIMIT;
+        if (searchQuery) params.search = searchQuery;
+        if (difficulty) params.difficulty = difficulty;
+        if (analysisStatus) params.analysis_status = analysisStatus;
+        if (visibility) params.visibility = visibility;
+
+        const response = await api.get(API_ENDPOINTS.my_videos, {params});
         return response.data;
     } catch (e) {
         console.error(e);

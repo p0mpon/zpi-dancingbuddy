@@ -16,7 +16,7 @@ export default function UserDashboard () {
                                 style={{ width: '96px', height: '96px' }}
                             >
                                 <Image
-                                    src={user.avatar}
+                                    src={user.avatar_url}
                                     alt={user.nickname}
                                     fluid
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
