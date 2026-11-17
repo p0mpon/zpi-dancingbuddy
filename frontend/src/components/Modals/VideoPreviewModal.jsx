@@ -71,7 +71,6 @@ export default function VideoPreviewModal({ previewVideo, onHide, switchToVideoV
                                         <p className="text-light mb-1">Song title: {previewVideo.song_title}</p>
                                         <p className="text-light fs-6 mb-4">
                                             Artist: {previewVideo.song_author}
-                                            {previewVideo.id}
                                         </p>
 
                                         <div className="mb-3">
@@ -183,7 +182,7 @@ export default function VideoPreviewModal({ previewVideo, onHide, switchToVideoV
                         <Col md={4} className="d-flex flex-column bg-dark bg-opacity-25 p-4 h-100">
                             <p className="fw-bold text-light mb-1">{previewVideo.title}</p>
                             <p className="text-light fs-6 mb-3">
-                                By {previewVideo.author}
+                                By <strong>{previewVideo.author}</strong>
                             </p>
 
                             <div className="ratio ratio-16x9 bg-dark mb-3 flex-shrink-0">

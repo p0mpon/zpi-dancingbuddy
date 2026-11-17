@@ -136,7 +136,7 @@ export function VideoUploadModal({ show, onClose }) {
                         </Form.Group>
 
                         <Form.Group className="mb-3 mb-md-0">
-                            <Form.Label className="fs-6 fw-semibold text-light">Video File (.mp4, .mov, .webm)</Form.Label>
+                            <Form.Label className="fs-6 fw-semibold text-light">Video File (.mp4, .mov, .webm) * </Form.Label>
                             <Form.Control
                                 type="file"
                                 required

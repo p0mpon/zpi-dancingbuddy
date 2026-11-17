@@ -1,10 +1,10 @@
 import React, {useEffect, useState} from 'react';
 import {Navbar, Nav, Form, InputGroup, Button, Dropdown, FormCheck} from 'react-bootstrap';
-import {CollectionPlay, Filter, Search, Upload} from 'react-bootstrap-icons';
+import {Filter, Search, Upload} from 'react-bootstrap-icons';
 import UserMenu from "./UserMenu";
 import {useSearchParams, Link} from "react-router-dom";
 import {DIFFICULTY_OPTIONS} from "../../utils/difficulty";
-import {seedVideos} from "../../utils/video_seed";
+import {ReactComponent as AppLogo} from "../../assets/ob-logo.svg";
 
 export default function TopBar({showSearch, onOpenUpload}) {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -58,14 +58,11 @@ export default function TopBar({showSearch, onOpenUpload}) {
     return (
         <Navbar bg="dark" variant="dark" expand="md" sticky="top"
                 className="border-bottom border-secondary px-3 px-lg-4 py-2">
-            <Link to="/">
+            <Link to="/" className="text-decoration-none">
                 <Navbar.Brand
                     className="d-flex align-items-center gap-2 fw-bold"
                 >
-                    <div
-                        className="bg-primary rounded p-2 text-white d-flex align-items-center justify-content-center shadow">
-                        <CollectionPlay size={20}/>
-                    </div>
+                    <AppLogo style={{width: '40px', height: '40px'}} aria-label="App logo" role="img"/>
                     <span>OnBeat</span>
                 </Navbar.Brand>
             </Link>
@@ -84,7 +81,7 @@ export default function TopBar({showSearch, onOpenUpload}) {
                             </Dropdown.Toggle>
 
                             <Dropdown.Menu className="bg-dark border-secondary p-2 shadow" style={{minWidth: '180px'}}>
-                                <div className="text-muted small px-2 pb-1 border-bottom border-secondary mb-1">
+                                <div className="text-light small px-2 pb-1 border-bottom border-secondary mb-1">
                                     Filter by Difficulty
                                 </div>
                                 {DIFFICULTY_OPTIONS.map(option => {
