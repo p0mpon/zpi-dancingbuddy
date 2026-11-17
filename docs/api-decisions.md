@@ -3,7 +3,7 @@
 Base: `docs/openapi.yaml` on `chore/DAN-146-api-specification` (with DAN-101 merged).
 Compared with: `backend/db/diagram/v2.md` and the current backend code.
 The spec was rewritten from this log on 2026-11-09; the log is the source of truth for why.
-Last updated: 2026-11-11.
+Last updated: 2026-11-12.
 
 ## Legend
 
@@ -203,8 +203,12 @@ max 128 → 400 field errors. The login request has no rules; wrong credentials 
 
 **Solution:** `GET /api/users/{nickname}/` → `{nickname, avatar_url, bio, public_videos_count}` (never `username`);
 their videos via `GET /api/library/?author=<nickname>`; unknown nickname → 404.
+A blocked user (`is_active = false`, set only by an admin) → 404 too, and their public videos leave the library
+(`owner__is_active=True`); their data stays (blocking is not deleting).
 
-⚠️ The nickname `me` must be reserved (see D2.3).
+⚠️ The nickname `me` must be reserved (see D2.3). Added (2026-11-12): more reserved names against impersonation:
+`me, admin, administrator, root, system, staff, support, moderator, mod, help, api, null, undefined, onbeat, dancingbuddy`,
+checked ignoring case (`RESERVED_NICKNAMES` in `accounts/validators.py`). Username and nickname are unique ignoring case.
 
 ### 🟡 D2.3 🆕 `/me` endpoints
 **Point:** the spec uses verb-style URLs: `/me/edit-login/`, `/me/edit-password/`, `/me/delete/`.

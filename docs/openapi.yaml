@@ -68,7 +68,8 @@ paths:
         Creates an account and logs the user in (sets the session cookie) (D1.5).
         The response contains the **recovery code once**. The frontend must show it and ask the user
         to save it; it is the only way to reset a forgotten password (D1.7).
-        The nickname `me` is reserved.
+        Reserved nicknames (`me`, `admin`, `support`, ...; ignoring case) are rejected with 400.
+        Username and nickname are unique ignoring letter case (`Ana` = `ana`).
       security:
         - csrfHeader: []
       requestBody:
@@ -352,6 +353,7 @@ paths:
       summary: Get a public profile
       description: |
         Public data of a user (never the username) (D2.2). Their videos: `GET /api/library/?author=<nickname>`.
+        A blocked (inactive) user gives 404, like an unknown nickname.
       responses:
         '200':
           description: Public profile.
@@ -1060,7 +1062,7 @@ components:
           type: string
           minLength: 3
           maxLength: 32
-          description: Public name shown everywhere. `me` is reserved.
+          description: Public name shown everywhere. Letters, digits and `. _ -`; unique ignoring case; reserved names (`me`, `admin`, ...) are rejected.
         password:
           type: string
           format: password

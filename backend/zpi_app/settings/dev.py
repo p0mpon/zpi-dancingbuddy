@@ -29,7 +29,9 @@ MAILERS = {
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        # Keep ours first: DRF takes the 401 WWW-Authenticate header from the first class
+        # (`Basic` there would make browsers show a login popup).
+        'accounts.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',

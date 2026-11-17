@@ -15,8 +15,8 @@ class DanceAttemptViewSetTests(APITestCase):
     BASE_URL = '/api/dance-attempts'
 
     def setUp(self):
-        self.user = User.objects.create_user(username='dancer')
-        self.other_user = User.objects.create_user(username='other')
+        self.user = User.objects.create_user(username='dancer', nickname='dancer')
+        self.other_user = User.objects.create_user(username='other', nickname='other')
         
         # Test client acts as the logged-in user
         self.client.force_authenticate(user=self.user)

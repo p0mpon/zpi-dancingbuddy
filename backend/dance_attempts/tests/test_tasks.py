@@ -10,7 +10,7 @@ User = get_user_model()
 
 class AnalyseAttemptTaskTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='dancer')
+        self.user = User.objects.create_user(username='dancer', nickname='dancer')
         self.video = Video.objects.create(
             owner=self.user,
             title='Fancy',

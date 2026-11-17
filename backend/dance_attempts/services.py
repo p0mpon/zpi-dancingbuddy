@@ -119,11 +119,14 @@ def set_attempt_result(
 
 def delete_attempt(*, attempt: DanceAttempt):
     """
-    Permanently deletes a DanceAttempt and its associated physical recording file.
+    Permanently deletes a DanceAttempt. Only the row is deleted here: the recording file is
+    removed after the commit by the post_delete signal in dance_attempts/signals.py, which also
+    covers the admin, bulk deletes and CASCADE from deleting the user.
+
+    Don't delete the file here as well: it would be gone even if the transaction rolled back
+    (the row would then point to a missing file), and clearing `attempt.recording` first makes
+    the signal skip its own cleanup.
     """
-    if attempt.recording:
-        attempt.recording.delete(save=False)
-        
     attempt.delete()
 
 

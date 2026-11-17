@@ -115,15 +115,9 @@ def update_video(*, video, **fields):
 
 
 def delete_video(*, video):
-    """Delete the row, then the file, but only after the transaction commits."""
-    # If the DB delete fails (or the transaction is rolled back), the file must still exist,
-    # so the file is removed in an on_commit callback, not right away.
-    # Known limitation: deleting a user CASCADE-deletes their rows but leaves their files.
-    with transaction.atomic():
-        storage = video.path_to_resource.storage
-        name = video.path_to_resource.name
-        video.delete()
-        transaction.on_commit(lambda: storage.delete(name))
+    """Delete the row. The file (and thumbnail) is removed after the commit by the post_delete
+    signal in videos/signals.py, which also covers the admin, bulk deletes and deleting the owner."""
+    video.delete()
 
 #   ENDPOINTS not used - use regular PATCH for visibility
 #

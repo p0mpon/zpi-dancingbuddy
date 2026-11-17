@@ -49,8 +49,8 @@ class VideoApiTests(APITestCase):
 
     def setUp(self):
         User = get_user_model()
-        self.dancer = User.objects.create_user(username='dancer', password='pass')
-        self.other = User.objects.create_user(username='other', password='pass')
+        self.dancer = User.objects.create_user(username='dancer', nickname='dancer', password='pass')
+        self.other = User.objects.create_user(username='other', nickname='other', password='pass')
         self.analysed = Video.objects.create(
             owner=self.dancer, title='Salsa basic step', path_to_resource=video_file('salsa.mp4'),
             file_size=16.0, analysis_status=AnalysisStatus.DONE, json_analysis=fake_frames(seconds=10),
@@ -71,7 +71,8 @@ class VideoApiTests(APITestCase):
 
     def test_requires_login(self):
         self.client.force_authenticate(None)
-        self.assertEqual(self.client.get('/api/videos/').status_code, status.HTTP_403_FORBIDDEN)
+        # 401, not DRF's default 403: accounts.authentication.SessionAuthentication (D7.5).
+        self.assertEqual(self.client.get('/api/videos/').status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_put_not_allowed(self):
         response = self.client.put(self.url(self.analysed), {'title': 'X'})
@@ -360,7 +361,7 @@ class AnalyseVideoTaskTests(TestCase):
         shutil.rmtree(TEST_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
-        self.dancer = get_user_model().objects.create_user(username='dancer', password='pass')
+        self.dancer = get_user_model().objects.create_user(username='dancer', nickname='dancer', password='pass')
         self.video = Video.objects.create(
             owner=self.dancer, title='Salsa', path_to_resource=video_file(), file_size=16.0,
         )
