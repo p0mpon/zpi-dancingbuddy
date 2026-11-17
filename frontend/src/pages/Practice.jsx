@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner, Modal } from 'react-bootstrap';
 import { useLocation, useNavigate } from "react-router-dom";
 import CameraRecorder from '../components/CameraHandlers/CameraRecorder';
-import { postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus } from "../api/calls";
+import { postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus, getFullVideo } from "../api/calls";
 import { compareLiveFrames } from '../components/CameraHandlers/LiveScoring';
 
 export default function Practice() {
@@ -32,7 +32,7 @@ export default function Practice() {
     const [referenceAnalysis, setReferenceAnalysis] = useState(null);
     const [taskId, setTaskId] = useState(null);
 
-    const currentVideo = location.state?.currentVideo;
+    const [currentVideo, setCurrentVideo] = useState(location.state?.currentVideo || null);
 
     useEffect(() => {
         practiceStateRef.current = practiceState;
@@ -40,6 +40,11 @@ export default function Practice() {
 
     useEffect(() => {
         if (currentVideo?.id) {
+            getFullVideo(currentVideo.id)
+                .then(video => {
+                    setCurrentVideo(video);
+                })
+                .catch(err => console.error("Failed to load video", err));
             getVideoAnalysis(currentVideo.id)
                 .then(data => setReferenceAnalysis(data))
                 .catch(err => console.error("Failed to load reference analysis", err));
