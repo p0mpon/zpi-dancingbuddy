@@ -60,8 +60,6 @@ services:
       context: ./frontend
       args:
         REACT_APP_API_URL: ${REACT_APP_API_URL}
-        REACT_APP_USERNAME: ${REACT_APP_USERNAME}
-        REACT_APP_PASSWORD: ${REACT_APP_PASSWORD}
     ports:
       - "3000:80"
     depends_on:

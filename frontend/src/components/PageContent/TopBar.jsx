@@ -5,7 +5,6 @@ import UserMenu from "./UserMenu";
 import {useSearchParams, Link} from "react-router-dom";
 import {DIFFICULTY_OPTIONS} from "../../utils/difficulty";
 import {ReactComponent as AppLogo} from "../../assets/ob-logo.svg";
-import {seedVideos} from "../../utils/video_seed";
 
 export default function TopBar({showSearch, onOpenUpload}) {
     const [searchParams, setSearchParams] = useSearchParams();
