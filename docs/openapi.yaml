@@ -18,6 +18,10 @@ info:
     2. Every POST / PUT / PATCH / DELETE sends the cookie value in the `X-CSRFToken` header.
     3. Login rotates the token: read the cookie again after logging in.
 
+    Every endpoint needs a login (401 without one), except register, login, CSRF, password reset and the
+    three a visitor needs to look around the library (D7.6): `GET /api/library/`, `GET /api/library/{video_id}/`
+    and `GET /api/videos/{video_id}/stream/`. A visitor gets public videos only.
+
     ## Video processing
     Uploaded files (`mp4`, `mov`, `webm`, max 500 MB) are **normalized** on the server to H.264/AAC MP4,
     constant 30 fps, max 1080p, and then analysed in the background (D3.4). Normalization and thumbnail
@@ -37,7 +41,7 @@ tags:
   - name: Videos
     description: Managing my own uploaded videos
   - name: Library
-    description: Browsing videos (public + mine) and likes
+    description: Browsing videos (public + mine; public only without a login) and likes
   - name: Dance Attempts
     description: Dancing to a video and the attempt history
 
@@ -438,17 +442,16 @@ paths:
       tags: [Videos]
       summary: Get a video
       description: |
-        Owner → `MyVideo`. Anyone else, for a public video → `PublicVideo` (owner-only fields hidden) (D4.4).
-        Someone else's private video → 404.
+        One of **my own** videos, as `MyVideo`. Owner only, like the rest of `/api/videos/` (D0.1, D4.4):
+        someone else's video → 404, also when it is public. To show another user's public video use
+        `GET /api/library/{video_id}/`. Only `/stream/` and `/analysis/` below also work for public videos.
       responses:
         '200':
           description: Video details.
           content:
             application/json:
               schema:
-                anyOf:
-                  - $ref: '#/components/schemas/MyVideo'
-                  - $ref: '#/components/schemas/PublicVideo'
+                $ref: '#/components/schemas/MyVideo'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -529,6 +532,12 @@ paths:
       description: |
         The normalized MP4 file, for `<video src>` (D3.4). Owner or public video (D4.4).
         Supports HTTP range requests for seeking. `download=1` sends it as an attachment named `<title>.mp4`.
+
+        Works without logging in for a public video (D7.6); a private video is then 404.
+      # `{}` = no login is also accepted.
+      security:
+        - {}
+        - cookieAuth: []
       parameters:
         - name: download
           in: query
@@ -571,8 +580,6 @@ paths:
               schema:
                 type: string
                 format: binary
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '416':
@@ -671,6 +678,13 @@ paths:
         The browse screen with the "public + mine" / "mine only" toggle (D0.1, D4.2).
         - `scope=all` (default): public videos **and** all my own videos (also private ones, badge them with `visibility`).
         - `scope=mine`: only my own videos.
+
+        Works without logging in (D7.6): a visitor gets public videos only, with `is_mine` and `liked_by_me`
+        `false` and `best_score` `null`. `scope=mine` without a login is 401.
+      # `{}` = no login is also accepted.
+      security:
+        - {}
+        - cookieAuth: []
       parameters:
         - name: scope
           in: query
@@ -693,7 +707,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedPublicVideoList'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Not logged in and `scope=mine` was asked for.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
 
   /api/library/liked/:
     get:
@@ -733,7 +751,13 @@ paths:
       operationId: getLibraryVideo
       tags: [Library]
       summary: Get a library video
-      description: A public video or one of my own, as shown on the library page (D0.1, D4.4).
+      description: |
+        A public video or one of my own, as shown on the library page (D0.1, D4.4).
+        Works without logging in for a public video (D7.6); a private video is then 404.
+      # `{}` = no login is also accepted.
+      security:
+        - {}
+        - cookieAuth: []
       responses:
         '200':
           description: Video.
@@ -741,8 +765,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicVideo'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -776,7 +798,9 @@ paths:
       operationId: unlikeVideo
       tags: [Library]
       summary: Remove my like
-      description: Idempotent.
+      description: |
+        Idempotent. Works on any video I can see (public or mine), so I can still remove my like from my own
+        video after unpublishing it (D5.2). Someone else's private video → 404.
       security:
         - cookieAuth: []
           csrfHeader: []
@@ -988,7 +1012,7 @@ components:
       name: limit
       in: query
       required: false
-      description: Page size.
+      description: Page size. A value above 100 is treated as 100.
       schema:
         type: integer
         minimum: 1
@@ -1020,7 +1044,7 @@ components:
       name: author
       in: query
       required: false
-      description: Exact author nickname.
+      description: Exact author nickname, ignoring letter case. An unknown nickname gives an empty page, not 404.
       schema:
         type: string
     ordering:
@@ -1258,12 +1282,14 @@ components:
           nullable: true
         is_mine:
           type: boolean
+          description: Always `false` when not logged in (D7.6).
         likes_count:
           type: integer
           minimum: 0
-          description: Counted from likes on every request (D5.1).
+          description: The stored `VIDEO.likes_count` column, kept in sync with the likes (D5.1).
         liked_by_me:
           type: boolean
+          description: Always `false` when not logged in (D7.6).
         times_played:
           type: integer
           minimum: 0
@@ -1273,7 +1299,7 @@ components:
           minimum: 0
           maximum: 100
           nullable: true
-          description: My best finished score on this video; null if I never danced it (D6.4).
+          description: My best finished score on this video; null if I never danced it (D6.4) or I'm not logged in (D7.6).
         created_at:
           type: string
           format: date-time

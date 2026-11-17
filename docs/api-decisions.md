@@ -3,7 +3,7 @@
 Base: `docs/openapi.yaml` on `chore/DAN-146-api-specification` (with DAN-101 merged).
 Compared with: `backend/db/diagram/v2.md` and the current backend code.
 The spec was rewritten from this log on 2026-11-09; the log is the source of truth for why.
-Last updated: 2026-11-12.
+Last updated: 2026-11-16 (DAN-141 notes: D0.1, D4.2, D4.3, D4.4, D5.2, D7.3; D7.6 decided).
 
 ## Legend
 
@@ -54,7 +54,7 @@ Last updated: 2026-11-12.
 | D4.2 | Library search and filters | 🆕 | 🟡 ⚠️ |
 | D4.3 | `times_played` | 🆕 | 🟡 ⚠️ |
 | D4.4 | Access to public videos | 🗂️ | 🟡 ⚠️ |
-| D5.1 | Like endpoints + computed counts | 🗂️ | 🟡 ⚠️ |
+| D5.1 | Like endpoints + stored count | 🗂️ | 🟡 ⚠️ |
 | D5.2 | Like rules + liked list | 🗂️ | 🟡 ⚠️ |
 | D6.1 | Creating an attempt | 🗂️ | 🟢 ⚠️ |
 | D6.2 | Attempt fields + score | 🗂️ | 🟡 ⚠️ |
@@ -69,7 +69,7 @@ Last updated: 2026-11-12.
 | D7.3 | Pagination | ➕ | 🟢 ⚠️ |
 | D7.4 | Analysis JSON format | 🗂️ | 🟢 ⚠️ |
 | D7.5 | Error format | 🗂️ | 🟡 |
-| D7.6 | Access without logging in | ➕ | ⚪ |
+| D7.6 | Access without logging in | ➕ | 🟢 ⚠️ |
 
 ---
 
@@ -89,7 +89,9 @@ sorted infinite-scroll lists can't be merged correctly (the order breaks, items 
   - `GET /api/library/{id}/` works for public videos and for my own (any visibility)
 - **Manage** = `GET /api/videos/` (my uploads: status, upload, edit, publish), with the **same shared filter set** as the
   library + `?analysis_status=` and `?visibility=`
-- one shared DRF `FilterSet` (search, difficulty, author, ordering) used by both endpoints
+- ~~one shared DRF `FilterSet`~~ → **one hand-written module, `videos/filters.py`** (search, difficulty, author, ordering),
+  used by both endpoints: a query-param serializer per endpoint + one `filter_videos()` function. No django-filter,
+  no new dependency (DAN-141)
 
 **Change:** ~~v2 "library = only public videos"~~ → **library = what I can dance: public + mine, with a `scope` toggle**;
 ~~filters only on the library~~ → **the same filters on both endpoints**.
@@ -344,39 +346,54 @@ no difficulty. Unpublishing clears `published_at` and keeps the likes.
 **Change:** ~~`title`, `songTitle`, `songArtist`, `authorUsername` filters~~ → **one `search` + `difficulty` + `author`**.
 More filters (e.g. dance style, BPM from audio analysis) can be added later as optional params without breaking the contract.
 
-⚠️ `ordering=likes` / `ordering=played` sort by counts computed per request (D4.3, D5.1), not by stored columns.
+Implemented in DAN-141 (`videos/filters.py`, `LibraryViewSet` in `videos/views.py`):
+- a wrong value (`difficulty=foo`, `scope=bar`, `ordering=x`) → 400 with a field error (D7.5); a missing or empty param = no filter
+- `?author=` is the whole nickname, ignoring case (nicknames are unique ignoring case); an unknown nickname → empty page, not 404
+- every ordering ends with `-id`, so equal values (same likes, same play count) keep a stable order across pages
+- `liked_by_me`, `times_played`, `best_score` are subqueries in the list query: 2 queries per page, whatever its size
+
+⚠️ `ordering=played` sorts by a count computed per request (D4.3). `ordering=likes` sorts by the stored
+`VIDEO.likes_count` column (D5.1) and uses the `(visibility, likes_count)` index.
 
 ### 🟡 D4.3 🆕 `times_played`
 **Point:** the spec added a play counter without saying what a "play" is.
 
-**Solution:** `times_played` = number of dance attempts on the video, **counted per request**
-(`annotate(times_played=Count('dance_attempts'))`), with no stored column. It counts the attempts that **exist now**:
+**Solution:** `times_played` = number of dance attempts on the video, **counted per request**, with no stored column
+(DAN-141: `videos/filters.py: annotate_times_played`, a `COUNT` subquery over `DanceAttempt.reference_video`. The reverse
+name of that relation is **`attempts`**, not ~~`dance_attempts`~~, which is `User → DanceAttempt`. A subquery rather than
+`Count('attempts')`, because a joined count multiplies with any other joined aggregate). It counts the attempts that **exist now**:
 deleting an attempt (D6.8) or an account lowers it.
 
 **Change:** ~~stored counter `VIDEO.times_played` with `F() + 1`~~ → **computed from DANCE_ATTEMPT**.
 
 ⚠️ Deleted attempts are hard-deleted (D6.8) and deleting a user account deletes their attempts (CASCADE), so counts on
 other people's videos can go down. That's accepted.
-⚠️ The count needs an index on `DANCE_ATTEMPT.reference_video_id`. The v2 index `(user_id, reference_video_id)` starts
-with `user_id`, so it doesn't help here.
+~~⚠️ The count needs an index on `DANCE_ATTEMPT.reference_video_id`.~~ Nothing to do: Django creates an index for every
+`ForeignKey`, so `reference_video_id` already has one (DAN-141).
 
 ### 🟡 D4.4 🗂️ Access to public videos
 **Point:** the code is owner-only (`get_video()` filters by `owner`), but the library and attempts need others to stream
 public videos and get their analysis.
 
-**Solution:** all read actions (`GET /api/videos/{id}/`, `/stream/`, `/analysis/`, `/dance-attempts/`): owner **or** public video.
-PATCH / DELETE / reanalyze: owner only. Someone else's private video → 404.
-A non-owner reading `GET /api/videos/{id}/` gets the **public subset**: owner-only fields (`file_size`, `analysis_status`,
-`updated_at`) are hidden by the serializer. So the spec has two DTOs: `PublicVideo` (the library DTO) and
-`MyVideo` = `PublicVideo` + the owner-only fields. `visibility` stays in `PublicVideo` (always `public` for other people's
-videos), because the library needs it for the "private" badge on my own videos (D0.1).
+**Solution (changed in DAN-141):**
+- `GET /api/videos/{id}/stream/` and `/analysis/`: owner **or** public video (public = `visibility = 'public'` and the owner
+  is active). Someone else's private video → 404. One URL per file: there is no `/api/library/{id}/stream/`.
+- `GET /api/videos/{id}/` stays **owner-only**, like the rest of `/api/videos/` ("my uploads", D0.1). The detail page of
+  someone else's video is **`GET /api/library/{id}/`**.
+- PATCH / DELETE / reanalyze: owner only.
+- So there are two DTOs, one per URL family: `PublicVideo` (the library DTO, `/api/library/`) and `MyVideo` =
+  `PublicVideo` + the owner-only fields (`file_size`, `analysis_status`, `updated_at`), only on `/api/videos/`.
+  `visibility` stays in `PublicVideo` (always `public` for other people's videos), because the library needs it for the
+  "private" badge on my own videos (D0.1).
 
-**Change:** ~~owner-only everything~~ → **owner or public for read actions, with owner-only fields hidden from others**.
+**Change:** ~~owner-only everything~~ → ~~owner or public for all read actions, `GET /api/videos/{id}/` answering with
+`MyVideo` or `PublicVideo` depending on who asks~~ → **owner or public only for `/stream/` and `/analysis/`;
+`GET /api/videos/{id}/` owner-only; others use `GET /api/library/{id}/`**. One detail URL per audience, so the two
+can't drift apart and no serializer has to hide fields depending on the reader.
 
-⚠️ `get_video()` in `backend/videos/views.py` still filters by owner.
-⚠️ A public video now has two detail URLs: `GET /api/videos/{id}/` and `GET /api/library/{id}/`. They must return the same
-`PublicVideo` shape for non-owners. The frontend should pick one (`/api/library/{id}/` for the library page) so the
-two don't drift apart.
+The rule lives in one place: `VideoQuerySet` in `videos/models.py` (`owned_by(user)`, `public()`, `visible_to(user)`).
+
+⚠️ `/api/videos/{id}/dance-attempts/` is not built yet; decide its access rule when it is.
 
 ---
 
@@ -389,15 +406,24 @@ in sync with VIDEO_LIKE.
 **Solution:**
 - `PUT /api/library/{id}/like/` and `DELETE /api/library/{id}/like/`, idempotent → 200 `{likes_count, liked_by_me}`;
   liking a video that isn't public → 404
-- everything is based on **VIDEO_LIKE**: `likes_count` = `COUNT(VIDEO_LIKE)` and `liked_by_me` = `EXISTS(VIDEO_LIKE for me)`,
-  both **computed per request** (`annotate`), with no stored counter
+- `likes_count` is the **stored column `VIDEO.likes_count`**. Only `likes.services` (`like_video` / `unlike_video`)
+  change it, with `F('likes_count') ± 1` in the same transaction as the VIDEO_LIKE insert / delete, and only when a
+  row was really created / deleted (idempotent)
+- `liked_by_me` = `EXISTS(VIDEO_LIKE for me)`, computed per request (`annotate`)
 - `likes_count` and `liked_by_me` in library DTOs; `likes_count` in my-video DTOs
 
-**Change:** ~~stored `VIDEO.likes_count` kept in sync with `F() ± 1`~~ → **computed from VIDEO_LIKE**.
+**Change:** ~~computed per request from VIDEO_LIKE, drop the `VIDEO.likes_count` column~~ → **stored column, synced by
+`likes.services`, re-synced later by a worker** (decided in DAN-110). The column, its `>= 0` check constraint and the
+`video_library_likes_idx` index from DAN-101 stay, and so does the v2 rule "`likes_count` changes only together with a
+VIDEO_LIKE insert/delete".
 
-⚠️ The VIDEO_LIKE model isn't implemented.
-⚠️ DAN-101 already added the `Video.likes_count` column, its `>= 0` check constraint and the `video_library_likes_idx` index.
-Drop all three in a migration, and drop the v2 rule "`likes_count` changes only together with a VIDEO_LIKE insert/delete".
+Implemented in DAN-110 (data layer only): the `likes` app with the `VideoLike` model and the two services. The
+endpoints, `liked_by_me` and the visibility check (404 for a video that isn't public) come in DAN-141; the services
+take an already-allowed user + video.
+
+⚠️ Accepted drift: deleting a **user** CASCADE-deletes their likes without decrementing `likes_count` on the videos
+they liked (the same happens when a like is deleted in the Django admin). A future worker will re-sync `likes_count`
+from `COUNT(VIDEO_LIKE)` (separate ticket).
 
 ### 🟡 D5.2 🗂️ Like rules and the liked list
 **Point:** v2 asked whether own videos can be liked and whether there's a "liked videos" list.
@@ -407,6 +433,12 @@ Drop all three in a migration, and drop the v2 rule "`likes_count` changes only 
 - **`GET /api/library/liked/`**: the videos I liked that are **public or mine**, newest like first (`VIDEO_LIKE.created_at`);
   the same filters, search and pagination as the library (D4.2, D7.3)
 - a liked video that its owner unpublished keeps the like (v2 rule) but disappears from my list until it's public again
+
+Implemented in DAN-141 (`LibraryViewSet`):
+- `PUT .../like/` looks the video up among **public** videos (own public included): a private video, also my own, → 404
+- `DELETE .../like/` looks it up among the videos **visible to me** (public or mine), so I can still take my like off my
+  own video after unpublishing it. Someone else's unpublished video → 404 and the like stays until it's public again
+- `?ordering=` on the liked list replaces "newest like first"; there is no `scope` param there
 
 **Change:** ~~no "liked videos" list~~ → **`GET /api/library/liked/`**.
 
@@ -524,6 +556,9 @@ writing the result and quietly stop if not (same pattern as `services.set_analys
 **Solution:** `LimitOffsetPagination` on every list (`?limit=&offset=` → `{count, next, previous, results}`, default
 `limit` 20, max 100); infinite scroll follows `next`. Cursor pagination was rejected because it can't sort by likes.
 
+Implemented in DAN-141 for `/api/videos/`, `/api/library/` and `/api/library/liked/`: `videos/pagination.py: VideoPagination`
+(`max_limit = 100`; a larger `limit` is quietly cut to 100, not a 400).
+
 ⚠️ Breaking change for the current frontend video list, which expects a plain array; it must read `results`.
 
 ### 🟢 D7.4 🗂️ Analysis JSON format
@@ -541,13 +576,28 @@ operation; `/stream/` documents 206 + `Content-Range` and 416.
 
 **Change:** ~~409 "username or nickname already exists"~~ → **400 field error** (DRF's unique validators do that by default).
 
-### ⚪ D7.6 ➕ Access without logging in
+### 🟢 D7.6 ➕ Access without logging in
 **Point:** the rewritten spec requires a session on every endpoint except register, login, CSRF and password reset.
 Nobody decided whether a visitor can browse the library before signing up.
 
-**Recommendation:** keep login required everywhere for now (simplest, and the library mixes in my own videos anyway).
-If a public landing page is wanted later, open `GET /api/library/` (`scope=all` = public only for anonymous visitors),
-`GET /api/library/{id}/` and `/stream/` to anonymous users; `liked_by_me`, `best_score` and `is_mine` are then `false` / `null`.
+**Solution:** a visitor can look around the library without an account (decided 2026-11-16, implemented in DAN-141;
+~~keep login required everywhere~~). Three GETs are open, and a visitor gets **public videos only**:
+- `GET /api/library/` (`scope=all` or no `scope`); `scope=mine` → 401, there is no "mine" without a user
+- `GET /api/library/{id}/`: a public video; a private one → 404
+- `GET /api/videos/{id}/stream/`: a public video; a private one → 404
+
+For a visitor `is_mine` and `liked_by_me` are `false` and `best_score` is `null`; `likes_count` and `times_played`
+are the real totals. The DTO has the same fields either way.
+
+Everything else still needs a login → 401: the liked list, liking, `/analysis/` (only needed to dance, and an
+attempt needs an account), the rest of `/api/videos/`, `/api/dance-attempts/`, `/api/users/`.
+
+Implementation: login stays the project default (`IsAuthenticated` in settings), so a new endpoint is closed unless it
+opts out. The three actions opt out with `AllowAny` (`LibraryViewSet.get_permissions`, `permission_classes` on the
+`stream` action); `VideoQuerySet.visible_to()` returns `public()` for an anonymous user.
+
+⚠️ `GET /api/users/{nickname}/` still needs a login, so the author link on a library card gives a visitor 401.
+Open it too if the public profile should be visible to visitors.
 
 ---
 
@@ -560,8 +610,8 @@ If a public landing page is wanted later, open `GET /api/library/` (`scope=all` 
 | "The library" section: library = public + my own videos (`scope=all|mine`), not only public | D0.1 |
 | `USER.display_name` → `USER.nickname` (public, unique, required, max 32) | D2.1 |
 | keep `USER.avatar` (convention); rename the code field `User.thumbnail` → `avatar` later | D2.5 |
-| no `VIDEO.times_played` column: computed as `COUNT(DANCE_ATTEMPT)`; add an index on `DANCE_ATTEMPT.reference_video_id` | D4.3 |
-| drop `VIDEO.likes_count` (+ its constraint, index and sync rule): computed as `COUNT(VIDEO_LIKE)` | D5.1 |
+| no `VIDEO.times_played` column: computed as `COUNT(DANCE_ATTEMPT)`; ~~add an index on `DANCE_ATTEMPT.reference_video_id`~~ (the FK already has one) | D4.3 |
+| keep `VIDEO.likes_count` (+ its constraint, index and sync rule); note the user-deletion drift and the future re-sync worker | D5.1 |
 | "The library" section: add the liked list (`/api/library/liked/`) | D5.2 |
 | DANCE_ATTEMPT can be deleted by its owner (hard delete, recording file removed via `post_delete`) | D6.8 |
 | `DANCE_ATTEMPT.score` int 0–100 (was float) | D6.2 |
