@@ -92,12 +92,13 @@ export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
 
 export async function getDanceAttemptStatus(taskId) {
     try {
-        const response = await defaultApi.get(API_ENDPOINTS.dance_attempt_status(taskId));
+        const response = await api.get(API_ENDPOINTS.dance_attempt_status(taskId));
         return response.data;
     } catch (e) {
         console.error("Failed to fetch score status:", e);
         throw e;
     }
+}
 
 export async function editVideo(id, videoData) {
     try {
@@ -142,7 +143,7 @@ export async function getUser(nickname) {
     }
 }
 
-export async function getDanceAttemptsForVideo(video_id, nextUrl) {
+export async function getDanceAttemptsForVideo(videoId, nextUrl) {
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -151,7 +152,17 @@ export async function getDanceAttemptsForVideo(video_id, nextUrl) {
         const params = {};
 
         params.limit = DANCE_ATTEMPT_PAGE_LIMIT;
-        const response = await api.get(API_ENDPOINTS.video_dance_attempts(video_id), {params})
+        const response = await api.get(API_ENDPOINTS.video_dance_attempts(videoId), {params})
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getPastDanceAttempt(attemptId){
+    try {
+        const response = await api.get(API_ENDPOINTS.retrieve_dance_attempt(attemptId))
         return response.data;
     } catch (e) {
         console.error(e);

@@ -26,9 +26,7 @@ export default function AppRoutes() {
             </Route>
             
             <Route element={<LearningLayout/>}>
-                <Route element={<LoginRequiredRoute/>}>
-                    <Route path="/video/:id" element={<Practice/>}/>
-                </Route>
+                <Route path="/video/:id" element={<Practice/>}/>
             </Route>
 
             <Route element={<AuthLayout/>}>

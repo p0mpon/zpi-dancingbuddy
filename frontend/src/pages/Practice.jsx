@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner, Modal } from 'react-bootstrap';
 import { useLocation, useNavigate } from "react-router-dom";
 import CameraRecorder from '../components/CameraHandlers/CameraRecorder';
-import {postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus, getFullVideo, getVideo} from "../api/calls";
+import {postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus, getFullVideo, getVideoDetails} from "../api/calls";
 import { compareLiveFrames } from '../components/CameraHandlers/LiveScoring';
 
 // Adjust this value to change how long the "Perfect! / Great!" text stays on screen (in milliseconds)
@@ -85,7 +85,7 @@ export default function Practice() {
 
         const pollStatus = async () => {
             try {
-                const videoDetails = await getVideo(currentVideo.id);
+                const videoDetails = await getVideoDetails(currentVideo.id);
                 if (!isSubscribed) return;
 
                 await evaluateStatus(videoDetails.analysis_status);
