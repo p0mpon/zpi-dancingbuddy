@@ -48,43 +48,54 @@ export default function Practice() {
     }, [practiceState]);
 
     useEffect(() => {
-        if (currentVideo?.id) {
-            getFullVideo(currentVideo.id)
-                .then(video => {
-                    setCurrentVideo(video);
-                })
-                .catch(err => console.error("Failed to load video", err));
-        }
+        if (!currentVideo?.id) return;
         let isSubscribed = true;
         let timeoutId;
 
-        const checkStatusAndFetchAnalysis = async () => {
+        const loadVideoAndCheckStatus = async () => {
+            try {
+                const fullVideo = await getFullVideo(currentVideo.id);
+                if (!isSubscribed) return;
+
+                setCurrentVideo(fullVideo);
+                await evaluateStatus(fullVideo.analysis_status);
+            } catch (err) {
+                console.error("Failed to load full video", err);
+                if (isSubscribed) setStatusError("Failed to load video file.");
+            }
+        };
+
+        const evaluateStatus = async (status) => {
+            const currentStatus = status?.toLowerCase();
+
+            if (currentStatus === 'done') {
+                try {
+                    const data = await getVideoAnalysis(currentVideo.id);
+                    if (isSubscribed) setReferenceAnalysis(data);
+                } catch (err) {
+                    console.error("Failed to load reference analysis", err);
+                    if (isSubscribed) setStatusError("Failed to download analysis data.");
+                }
+            } else if (currentStatus === 'processing' || currentStatus === 'pending') {
+                timeoutId = setTimeout(pollStatus, 3000);
+            } else if (currentStatus === 'failed') {
+                if (isSubscribed) setStatusError("Video analysis failed on the server. Cannot practice this video.");
+            }
+        };
+
+        const pollStatus = async () => {
             try {
                 const videoDetails = await getVideo(currentVideo.id);
                 if (!isSubscribed) return;
 
-                const status = videoDetails.analysis_status;
-
-                if (status === 'done') {
-                    try {
-                        const data = await getVideoAnalysis(currentVideo.id);
-                        if (isSubscribed) setReferenceAnalysis(data);
-                    } catch (err) {
-                        console.error("Failed to load reference analysis", err);
-                        if (isSubscribed) setStatusError("Failed to download analysis data.");
-                    }
-                } else if (status === 'processing') {
-                    timeoutId = setTimeout(checkStatusAndFetchAnalysis, 3000);
-                } else if (status === 'failed') {
-                    if (isSubscribed) setStatusError("Video analysis failed on the server. Cannot practice this video.");
-                }
+                await evaluateStatus(videoDetails.analysis_status);
             } catch (err) {
                 console.error("Failed to fetch video details", err);
                 if (isSubscribed) setStatusError("Failed to check video status.");
             }
         };
 
-        checkStatusAndFetchAnalysis();
+        loadVideoAndCheckStatus();
 
         return () => {
             isSubscribed = false;
