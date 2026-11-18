@@ -24,7 +24,6 @@ export async function getAllVideos(searchQuery, difficulty, nextUrl) {
 
 export async function uploadNewVideo(video) {
     try {
-        console.log(process.env.REACT_APP_API_URL)
         const response = await api.post(API_ENDPOINTS.my_videos, video)
         return response.data;
     } catch (e) {
@@ -58,6 +57,45 @@ export async function getFullVideo(id) {
         };
     } catch (e) {
         console.error(e);
+        throw e;
+    }
+}
+
+export async function getVideoAnalysis(id) {
+    try {
+        const response = await api.get(API_ENDPOINTS.video_analysis(id));
+        return response.data;
+    } catch (e) {
+        console.error("Failed to fetch reference analysis:", e);
+        throw e;
+    }
+}
+
+export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
+    try {
+        const formData = new FormData();
+        formData.append('reference_video_id', referenceVideoId);
+        formData.append('recording', videoBlob, 'practice_attempt.webm');
+        formData.append('mediapipe_data', JSON.stringify(frames));
+
+        const response = await api.post(API_ENDPOINTS.dance_attempts, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        return response.data;
+    } catch (e) {
+        console.error("error details:", e.response?.data);
+        throw e;
+    }
+}
+
+export async function getDanceAttemptStatus(taskId) {
+    try {
+        const response = await api.get(API_ENDPOINTS.dance_attempt_status(taskId));
+        return response.data;
+    } catch (e) {
+        console.error("Failed to fetch score status:", e);
         throw e;
     }
 }
@@ -105,7 +143,7 @@ export async function getUser(nickname) {
     }
 }
 
-export async function getDanceAttemptsForVideo(video_id, nextUrl) {
+export async function getDanceAttemptsForVideo(videoId, nextUrl) {
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -114,7 +152,17 @@ export async function getDanceAttemptsForVideo(video_id, nextUrl) {
         const params = {};
 
         params.limit = DANCE_ATTEMPT_PAGE_LIMIT;
-        const response = await api.get(API_ENDPOINTS.video_dance_attempts(video_id), {params})
+        const response = await api.get(API_ENDPOINTS.video_dance_attempts(videoId), {params})
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getPastDanceAttempt(attemptId){
+    try {
+        const response = await api.get(API_ENDPOINTS.retrieve_dance_attempt(attemptId))
         return response.data;
     } catch (e) {
         console.error(e);

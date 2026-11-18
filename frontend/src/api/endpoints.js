@@ -30,7 +30,8 @@ export const API_ENDPOINTS = {
     
     //dance attempts
     "video_dance_attempts": (video_id) => `videos/${video_id}/dance-attempts/`,
-    "dance_attempts": "dance-attempts/",        //GET, POST
+    "dance_attempts": "dance-attempts/", // POST
+    "dance_attempt_status": (taskId) => `dance-attempts/${taskId}/status/`, // GET
     "retrieve_dance_attempt": (attempt_id) => `dance-attempts/${attempt_id}/`,      //GET, DELETE
     "attempt_reanalysis": (attempt_id) => `dance-attempts/${attempt_id}/reanalyze/`,
     
