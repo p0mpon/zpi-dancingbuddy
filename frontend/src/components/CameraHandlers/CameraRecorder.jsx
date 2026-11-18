@@ -84,7 +84,15 @@ const CameraRecorder = forwardRef(({ onRecordingComplete, onCameraReady, onCamer
             cameraStreamRef.current = stream;
 
             try {
-                const mediaRecorder = new MediaRecorder(stream);
+                let options = { mimeType: 'video/webm' };
+                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+                    options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 500000 };
+                } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+                    options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 500000 };
+                }
+
+                const mediaRecorder = new MediaRecorder(stream, options);
+
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data && event.data.size > 0) {
                         recordedChunksRef.current.push(event.data);

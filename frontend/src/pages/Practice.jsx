@@ -2,8 +2,11 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner, Modal } from 'react-bootstrap';
 import { useLocation, useNavigate } from "react-router-dom";
 import CameraRecorder from '../components/CameraHandlers/CameraRecorder';
-import { postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus, getFullVideo } from "../api/calls";
+import {postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus, getFullVideo, getVideo} from "../api/calls";
 import { compareLiveFrames } from '../components/CameraHandlers/LiveScoring';
+
+// Adjust this value to change how long the "Perfect! / Great!" text stays on screen (in milliseconds)
+const FEEDBACK_COOLDOWN_MS = 800;
 
 export default function Practice() {
     const navigate = useNavigate();
@@ -12,18 +15,24 @@ export default function Practice() {
     const referenceVideoRef = useRef(null);
     const cameraRecorderRef = useRef(null);
     const feedbackOverlayRef = useRef(null);
-    const lastFeedbackTextRef = useRef("");
     const localVideoUrlRef = useRef(null);
 
     // Sliding window buffer refs
     const liveFrameBufferRef = useRef([]);
     const nextChoreoIndexRef = useRef(0);
 
+    // Accumulators for averaging scores & UI throttling
+    const intervalScoreSumRef = useRef(0);
+    const intervalFrameCountRef = useRef(0);
+    const feedbackCooldownRef = useRef(false);
+    const feedbackTimeoutRef = useRef(null);
+
     // Debug Tracker (Invisible to user, highly useful for your next branch)
     const debugLossAccumulatorRef = useRef({ angle: 0, velocity: 0, acceleration: 0, hipHeight: 0, hipRotation: 0 });
 
     const [isCameraReady, setIsCameraReady] = useState(false);
     const [cameraError, setCameraError] = useState(null);
+    const [statusError, setStatusError] = useState(null);
 
     const [practiceState, setState] = useState('idle');
     const practiceStateRef = useRef(practiceState);
@@ -45,10 +54,42 @@ export default function Practice() {
                     setCurrentVideo(video);
                 })
                 .catch(err => console.error("Failed to load video", err));
-            getVideoAnalysis(currentVideo.id)
-                .then(data => setReferenceAnalysis(data))
-                .catch(err => console.error("Failed to load reference analysis", err));
         }
+        let isSubscribed = true;
+        let timeoutId;
+
+        const checkStatusAndFetchAnalysis = async () => {
+            try {
+                const videoDetails = await getVideo(currentVideo.id);
+                if (!isSubscribed) return;
+
+                const status = videoDetails.analysis_status;
+
+                if (status === 'done') {
+                    try {
+                        const data = await getVideoAnalysis(currentVideo.id);
+                        if (isSubscribed) setReferenceAnalysis(data);
+                    } catch (err) {
+                        console.error("Failed to load reference analysis", err);
+                        if (isSubscribed) setStatusError("Failed to download analysis data.");
+                    }
+                } else if (status === 'processing') {
+                    timeoutId = setTimeout(checkStatusAndFetchAnalysis, 3000);
+                } else if (status === 'failed') {
+                    if (isSubscribed) setStatusError("Video analysis failed on the server. Cannot practice this video.");
+                }
+            } catch (err) {
+                console.error("Failed to fetch video details", err);
+                if (isSubscribed) setStatusError("Failed to check video status.");
+            }
+        };
+
+        checkStatusAndFetchAnalysis();
+
+        return () => {
+            isSubscribed = false;
+            if (timeoutId) clearTimeout(timeoutId);
+        };
     }, [currentVideo?.id]);
 
     useEffect(() => {
@@ -92,7 +133,13 @@ export default function Practice() {
         setState('positioning');
         liveFrameBufferRef.current = [];
         nextChoreoIndexRef.current = 0;
-        lastFeedbackTextRef.current = "";
+
+        intervalScoreSumRef.current = 0;
+        intervalFrameCountRef.current = 0;
+        feedbackCooldownRef.current = false;
+        if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+        if (feedbackOverlayRef.current) feedbackOverlayRef.current.innerText = "";
+
         debugLossAccumulatorRef.current = { angle: 0, velocity: 0, acceleration: 0, hipHeight: 0, hipRotation: 0 };
     };
 
@@ -140,6 +187,10 @@ export default function Practice() {
                     }
 
                     if (bestScore !== -Infinity) {
+                        // Accumulate scores between beats
+                        intervalScoreSumRef.current += bestScore;
+                        intervalFrameCountRef.current += 1;
+
                         if (bestBreakdown) {
                             debugLossAccumulatorRef.current.angle += bestBreakdown.angle;
                             debugLossAccumulatorRef.current.velocity += bestBreakdown.velocity;
@@ -149,21 +200,35 @@ export default function Practice() {
                         }
 
                         if (choreoFrame.audio_context.is_beat || choreoFrame.audio_context.is_onset) {
-                            let newFeedback = "";
+                            // Only update UI if cooldown is finished
+                            if (!feedbackCooldownRef.current && intervalFrameCountRef.current > 0) {
+                                const averageScore = intervalScoreSumRef.current / intervalFrameCountRef.current;
+                                let newFeedback = "";
 
-                            // ORIGINAL STRICT THRESHOLDS
-                            if (bestScore >= 0.85) newFeedback = "Perfect!";
-                            else if (bestScore >= 0.70) newFeedback = "Great!";
-                            else if (bestScore >= 0.50) newFeedback = "Good";
+                                if (averageScore >= 0.85) newFeedback = "Perfect!";
+                                else if (averageScore >= 0.70) newFeedback = "Great!";
+                                else if (averageScore >= 0.50) newFeedback = "Good";
 
-                            if (newFeedback !== lastFeedbackTextRef.current && feedbackOverlayRef.current) {
-                                lastFeedbackTextRef.current = newFeedback;
-                                feedbackOverlayRef.current.innerText = newFeedback;
+                                if (newFeedback !== "" && feedbackOverlayRef.current) {
+                                    feedbackOverlayRef.current.innerText = newFeedback;
 
-                                feedbackOverlayRef.current.classList.remove('bounce-animation');
-                                void feedbackOverlayRef.current.offsetWidth;
-                                feedbackOverlayRef.current.className = `display-4 fw-bold text-white text-uppercase text-shadow ${newFeedback ? 'bounce-animation' : ''}`;
+                                    feedbackOverlayRef.current.classList.remove('bounce-animation');
+                                    void feedbackOverlayRef.current.offsetWidth;
+                                    feedbackOverlayRef.current.className = `display-4 fw-bold text-white text-uppercase text-shadow bounce-animation`;
+
+                                    feedbackCooldownRef.current = true;
+
+                                    feedbackTimeoutRef.current = setTimeout(() => {
+                                        if (feedbackOverlayRef.current) {
+                                            feedbackOverlayRef.current.innerText = "";
+                                        }
+                                        feedbackCooldownRef.current = false;
+                                    }, FEEDBACK_COOLDOWN_MS);
+                                }
                             }
+
+                            intervalScoreSumRef.current = 0;
+                            intervalFrameCountRef.current = 0;
                         }
                     }
                     nextChoreoIndexRef.current++;
@@ -181,7 +246,6 @@ export default function Practice() {
     const handleRecordingSubmission = useCallback(async ({ frames, videoBlob }) => {
         if (!currentVideo?.id) return;
 
-        // Print the diagnostic report to console before submission
         const losses = debugLossAccumulatorRef.current;
         console.log("========== LIVE SCORING DEBUG REPORT ==========");
         console.table(losses);
@@ -274,13 +338,21 @@ export default function Practice() {
                     <Modal.Title className="fw-bold">{currentVideo.title}</Modal.Title>
                 </Modal.Header>
                 <Modal.Body className="text-center py-5">
-                    <h5 className="mb-4">Get into position!</h5>
+                    {statusError ? (
+                        <div className="alert alert-danger mb-4 text-start" style={{ fontSize: '0.9rem' }}>
+                            <strong>Error:</strong> <br/>
+                            {statusError}
+                        </div>
+                    ) : (
+                        <h5 className="mb-4">Get into position!</h5>
+                    )}
+
                     <Button
                         variant="primary"
                         size="lg"
                         className="px-5 rounded-pill shadow-sm"
                         onClick={handleStartPractice}
-                        disabled={!isCameraReady || !referenceAnalysis}
+                        disabled={!isCameraReady || !referenceAnalysis || statusError}
                     >
                         {cameraError ? (
                             <span className="text-danger">Camera unavailable. Check permissions.</span>
@@ -289,13 +361,13 @@ export default function Practice() {
                         ) : (
                             <>
                                 <Spinner size="sm" className="me-2"/>
-                                {isCameraReady ? 'Loading Analysis...' : 'Initializing Camera...'}
+                                {isCameraReady ? 'Analyzing video on server...' : 'Initializing Camera...'}
                             </>
                         )}
                     </Button>
                 </Modal.Body>
                 <Modal.Footer className="border-0 justify-content-center pb-4">
-                    <Button variant="link" className="text-secondary text-decoration-none" onClick={() => navigate('/')}>
+                    <Button variant="link" className="text-secondary text-decoration-none" onClick={() => navigate(-1)}>
                         Cancel & go back
                     </Button>
                 </Modal.Footer>

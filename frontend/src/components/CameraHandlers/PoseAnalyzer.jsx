@@ -137,8 +137,18 @@ export default function usePoseAnalyzer(videoRef, onRecordingComplete, onAnalyze
             if (recordingRef.current && activeWorld && activeImage) {
                 rawPayloadRef.current.push({
                     timestamp,
-                    world_landmarks: activeWorld.map(lm => [lm.x, lm.y, lm.z, lm.visibility ?? 0]),
-                    vis_landmarks: activeImage.map(lm => [lm.x, lm.y, lm.z, lm.visibility ?? 0])
+                    world_landmarks: activeWorld.map(lm => [
+                        round(lm.x, 4),
+                        round(lm.y, 4),
+                        round(lm.z, 4),
+                        round(lm.visibility ?? 0, 4)
+                    ]),
+                    vis_landmarks: activeImage.map(lm => [
+                        round(lm.x, 4),
+                        round(lm.y, 4),
+                        round(lm.z, 4),
+                        round(lm.visibility ?? 0, 4)
+                    ])
                 });
             }
 
