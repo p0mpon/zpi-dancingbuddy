@@ -144,6 +144,10 @@ export async function getUser(nickname) {
 }
 
 export async function getDanceAttemptsForVideo(videoId, nextUrl) {
+    if(!videoId && !nextUrl) {
+        console.error("You must provide a videoId for video");
+        throw "You must provide a videoId for video";
+    }
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -152,7 +156,8 @@ export async function getDanceAttemptsForVideo(videoId, nextUrl) {
         const params = {};
 
         params.limit = DANCE_ATTEMPT_PAGE_LIMIT;
-        const response = await api.get(API_ENDPOINTS.video_dance_attempts(videoId), {params})
+        params.video_id = videoId;
+        const response = await api.get(API_ENDPOINTS.video_dance_attempts, {params})
         return response.data;
     } catch (e) {
         console.error(e);
