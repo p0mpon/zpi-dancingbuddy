@@ -17,7 +17,7 @@ export default function UserDashboard () {
                             >
                                 <Image
                                     src={user.avatar}
-                                    alt={user.username}
+                                    alt={user.nickname}
                                     fluid
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
@@ -26,9 +26,9 @@ export default function UserDashboard () {
 
                         <Col>
                             <div className="d-flex align-items-center gap-2 mb-1">
-                                <h3 className="fw-bold mb-0">{user.username}</h3>
+                                <h3 className="fw-bold mb-0">{user.nickname}</h3>
                             </div>
-                            <p className="text-muted-light mb-2 small">{user.email}</p>
+                            <p className="text-muted-light mb-2 small">{user.username}</p>
                         </Col>
                     </Row>
                 </Card.Body>
@@ -67,21 +67,20 @@ export default function UserDashboard () {
 
                                 <div className="d-flex flex-column gap-3 max-w-md">
                                     <div>
-                                        <label htmlFor="user" className="form-label text-muted-light small mb-1">Username</label>
+                                        <label htmlFor="user" className="form-label text-muted-light small mb-1">nickname</label>
                                         <input
                                             id="user"
                                             type="text"
-                                            defaultValue={user.username}
+                                            defaultValue={user.nickname}
                                             className="form-control bg-dark text-light border-secondary"
                                         />
                                     </div>
 
                                     <div>
-                                        <label htmlFor="email" className="form-label text-muted-light small mb-1">Email</label>
+                                        <label htmlFor="username" className="form-label text-muted-light small mb-1">Username</label>
                                         <input
-                                            id="email"
-                                            type="email"
-                                            defaultValue={user.email}
+                                            id="username"
+                                            defaultValue={user.username}
                                             className="form-control bg-dark text-light border-secondary"
                                         />
                                     </div>

@@ -26,10 +26,10 @@ export default function UserMenu() {
             </Dropdown.Toggle>
 
             <Dropdown.Menu variant="dark" className="shadow border-secondary mt-2">
-                {user?.username ? <>
+                {user?.nickname ? <>
                     <Dropdown.Header className="text-muted-light small">
                         Signed in as <br/>
-                        <strong className="text-light">{user.username}</strong>
+                        <strong className="text-light">{user.nickname}</strong>
                     </Dropdown.Header>
                     <Dropdown.Divider className="border-secondary"/>
 

@@ -33,7 +33,7 @@ export default function VideoDisplay() {
                         src={currentVideo.file}
                         controls
                         autoPlay
-                        poster={currentVideo.thumbnail}
+                        poster={currentVideo.thumbnail_url}
                         className="w-100 h-100 object-fit-contain"
                     >
                         Your browser does not support the video tag.
