@@ -24,17 +24,13 @@ class DanceAttemptSerializer(serializers.ModelSerializer):
 
 class DanceAttemptDetailSerializer(DanceAttemptSerializer):
     """
-    Extends the base serializer to include heavy fields 
-    like score_details and the recording_url.
+    Extends the base serializer to include heavy fields like score_details.
     """
-    recording_url = serializers.FileField(source='recording', read_only=True)
-    reference_video_url = serializers.FileField(source='reference_video.path_to_resource', read_only=True, default=None)
     
     class Meta(DanceAttemptSerializer.Meta):
-        fields = DanceAttemptSerializer.Meta.fields + (
-            'recording_url', 'reference_video_url',
+        fields = DanceAttemptSerializer.Meta.fields + tuple([
             'score_details'
-        )
+        ])
         read_only_fields = fields
 
 

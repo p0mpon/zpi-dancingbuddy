@@ -7,13 +7,18 @@ Dance attempts API. Routes (registered in zpi_app/urls.py):
     DELETE  /api/dance-attempts/{id}/                delete an attempt
     POST    /api/dance-attempts/{id}/reanalyze/      reanalyze an existing attempt (recalculates score and score_details)
     GET     /api/dance-attempts/{id}/status/         retrieve the status of an attempt (for polling)
+    GET     /api/dance-attempts/{id}/stream/         stream the user's recording
 """
+import mimetypes
+
+from rest_framework.exceptions import NotFound
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import viewsets, mixins, status
 
 from . import services
 from .serializers import DanceAttemptDetailSerializer, DanceAttemptSerializer, DanceAttemptUploadSerializer
+from core.streaming import range_file_response
 from core.validators import parse_positive_int_param
 
 
@@ -104,3 +109,28 @@ class DanceAttemptViewSet(
         """GET /api/dance-attempts/{id}/status/"""
         attempt = self.get_object()
         return Response({'status': attempt.status}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'])
+    def stream(self, request, pk=None):
+        """GET /api/dance-attempts/{id}/stream/"""
+        attempt = self.get_object()
+        if not attempt.recording:
+            raise NotFound('This dance attempt has no recording.')
+
+        file_name = attempt.recording.name
+        content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
+        extension = file_name.rsplit('.', 1)[-1] if '.' in file_name else ''
+        filename = (
+            f'{attempt.reference_title}.{extension}'
+            if extension
+            else attempt.reference_title
+        )
+
+        return range_file_response(
+            request,
+            attempt.recording,
+            content_type,
+            as_attachment=request.query_params.get('download') == '1',
+            filename=filename,
+        )
+        
