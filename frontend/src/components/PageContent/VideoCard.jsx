@@ -1,10 +1,22 @@
-import {Badge, Card} from "react-bootstrap";
+import {Badge, Button, Card} from "react-bootstrap";
 import React from "react";
-import {Film} from "react-bootstrap-icons";
+import {Film, Heart, HeartFill} from "react-bootstrap-icons";
 import UserAvatar from "./UserAvatar";
+import {LikeVideo, UnlikeVideo} from "../../api/calls";
 
 export default function VideoCard({mode, video, showPreview}) {
     if (!video) return null;
+
+    const isLiked = Boolean(video.liked_by_me);
+
+    const handleLikeClick = async (e) => {
+        e.stopPropagation();
+        if (!isLiked) {
+            await LikeVideo(video.id);
+        } else{
+            await UnlikeVideo(video.id);
+        }
+    };
 
     return (
         <Card
@@ -72,6 +84,24 @@ export default function VideoCard({mode, video, showPreview}) {
                                 className="text-white">{video.analysis_status}</strong></span>
                         )}
                     </div>
+                    {mode === 'general' && (
+                        <Button
+                            type="button"
+                            variant="link"
+                            onClick={handleLikeClick}
+                            aria-label={isLiked ? "Unlike video" : "Like video"}
+                            className="p-0 text-decoration-none d-inline-flex align-items-center gap-1 text-light"
+                        >
+                            {isLiked ? (
+                                <HeartFill size={18} className="text-danger"/>
+                            ) : (
+                                <Heart size={18} className="text-secondary"/>
+                            )}
+                            {typeof video.likes_count === "number" && (
+                                <span className="text-secondary small">{video.likes_count}</span>
+                            )}
+                        </Button>
+                    )}
                 </div>
             </Card.Body>
         </Card>
