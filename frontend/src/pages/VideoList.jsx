@@ -2,7 +2,6 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Badge, Button, Row, Col, Spinner} from 'react-bootstrap';
 import {Film} from 'react-bootstrap-icons';
 import {useNavigate, useSearchParams} from "react-router-dom";
-import {getFullVideo} from "../api/calls";
 import useInfiniteScroll from "../hooks/useInfiniteScroll";
 import VideoCard from "../components/PageContent/VideoCard";
 import {VIDEO_LIST_CONFIGS} from "../config/video_list_config";
@@ -10,8 +9,8 @@ import {VIDEO_LIST_CONFIGS} from "../config/video_list_config";
 
 export default function VideoList({mode}) {
     const config = VIDEO_LIST_CONFIGS[mode] || VIDEO_LIST_CONFIGS.general;
-    const { title, fetchFunction, VideoModal, filters } = config;
-    
+    const {title, fetchFunction, VideoModal, filters} = config;
+
     const [searchParams, setSearchParams] = useSearchParams();
     const searchQuery = searchParams.get('search') || '';
     const difficultyQuery = searchParams.get('difficulty') || '';
@@ -38,7 +37,7 @@ export default function VideoList({mode}) {
             visibility: searchParams.get('visibility') || '',
             nextUrl: null,
         };
-        
+
         fetchFunction(params)
             .then(data => {
                 setVideos(data.results || []);
@@ -59,7 +58,7 @@ export default function VideoList({mode}) {
             visibility: searchParams.get('visibility') || '',
             nextUrl: nextUrl,
         };
-        
+
         return fetchFunction(params)
             .then(data => {
                 const newVideos = data.results || [];
@@ -73,7 +72,7 @@ export default function VideoList({mode}) {
             .catch(console.error);
     }, [nextUrl, searchQuery, difficultyQuery, statusQuery, visibilityQuery]);
 
-    const { loaderRef, isLoadingMore } = useInfiniteScroll(fetchNextPage, !!nextUrl);
+    const {loaderRef, isLoadingMore} = useInfiniteScroll(fetchNextPage, !!nextUrl);
 
     useEffect(() => {
         const handleHashChange = () => {
@@ -90,7 +89,7 @@ export default function VideoList({mode}) {
         };
 
         handleHashChange();
-        
+
         window.addEventListener('hashchange', handleHashChange);
         return () => window.removeEventListener('hashchange', handleHashChange);
     }, [videos]);
@@ -108,7 +107,10 @@ export default function VideoList({mode}) {
 
     const switchToVideo = () => {
         navigate('/video/' + selectedVideo.id, {
-            state: {currentVideo: selectedVideo}
+            state: {
+                currentVideo: selectedVideo,
+                mode: mode
+            },
         });
         setSelectedVideo(null);
     };
@@ -125,11 +127,11 @@ export default function VideoList({mode}) {
 
             {isLoading && videos.length === 0 ? (
                 <div className="text-center py-5">
-                    <Spinner animation="border" variant="light" />
+                    <Spinner animation="border" variant="light"/>
                 </div>
             ) : videos.length === 0 ? (
                 <div className="text-center py-5 bg-black rounded-4 border border-secondary p-4">
-                    <div className="text-muted mb-3"><Film size={48} /></div>
+                    <div className="text-muted mb-3"><Film size={48}/></div>
                     <h5 className="text-light mb-1">No videos found</h5>
                     {searchQuery && (
                         <Button variant="outline-light" size="sm" className="mt-2" onClick={resetSearch}>
@@ -142,14 +144,14 @@ export default function VideoList({mode}) {
                     <Row xs={1} md={2} lg={3} className="g-4">
                         {videos.map((video) => (
                             <Col>
-                                <VideoCard key={video.id} mode={mode} video={video} showPreview={showPreview} />
+                                <VideoCard key={video.id} mode={mode} video={video} showPreview={showPreview}/>
                             </Col>
                         ))}
                     </Row>
                     <div ref={loaderRef} className="text-center py-4">
                         {isLoadingMore && (
                             <div className="d-flex justify-content-center align-items-center gap-2 text-muted">
-                                <Spinner animation="border" size="sm" />
+                                <Spinner animation="border" size="sm"/>
                                 <span>Loading more videos...</span>
                             </div>
                         )}

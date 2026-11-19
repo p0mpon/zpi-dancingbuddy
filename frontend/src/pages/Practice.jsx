@@ -2,8 +2,13 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Spinner, Modal } from 'react-bootstrap';
 import { useLocation, useNavigate } from "react-router-dom";
 import CameraRecorder from '../components/CameraHandlers/CameraRecorder';
-import {postDanceAttempt, getVideoAnalysis, getDanceAttemptStatus, getFullVideo, getVideoDetails} from "../api/calls";
+import {
+    postDanceAttempt,
+    getVideoAnalysis,
+    getDanceAttemptStatus
+} from "../api/calls";
 import { compareLiveFrames } from '../components/CameraHandlers/LiveScoring';
+import {VIDEO_FETCH_CONFIGS} from "../config/video_fetch_config";
 
 // Adjust this value to change how long the "Perfect! / Great!" text stays on screen (in milliseconds)
 const FEEDBACK_COOLDOWN_MS = 800;
@@ -11,6 +16,9 @@ const FEEDBACK_COOLDOWN_MS = 800;
 export default function Practice() {
     const navigate = useNavigate();
     const location = useLocation();
+    
+    const config = VIDEO_FETCH_CONFIGS[location.state?.mode] || VIDEO_FETCH_CONFIGS.general;
+    const {getVideoDetails, getFullVideo} = config;
 
     const referenceVideoRef = useRef(null);
     const cameraRecorderRef = useRef(null);

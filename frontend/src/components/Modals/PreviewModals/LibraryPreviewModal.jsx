@@ -5,7 +5,7 @@ import {VideoProvider} from "../../../context/VideoContext";
 export default function LibraryPreviewModal({previewVideo, onHide, switchToVideoView}) {
     const videoId = previewVideo?.id || previewVideo;
     return (
-        <VideoProvider videoId={videoId}>
+        <VideoProvider mode={'general'} videoId={videoId}>
             <VideoPreviewModal
                 onHide={onHide}
                 switchToVideoView={switchToVideoView}
