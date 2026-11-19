@@ -15,7 +15,7 @@ from rest_framework.test import APITestCase
 from dance_attempts.models import DanceAttempt
 
 from .models import AnalysisStatus, Difficulty, Video, Visibility
-from .streaming import RangeNotSatisfiable, parse_range_header
+from core.streaming import RangeNotSatisfiable, parse_range_header
 from .tasks import analyse_video
 
 # Uploaded files go to a throw-away folder, removed after the test class runs.

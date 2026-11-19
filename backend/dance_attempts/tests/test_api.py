@@ -1,5 +1,4 @@
 import json
-from unittest.mock import patch
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
@@ -168,6 +167,48 @@ class DanceAttemptViewSetTests(APITestCase):
         # THEN returns 404 Not Found and the attempt still exists
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(DanceAttempt.objects.filter(id=other_attempt.id).exists())
+
+    def test_stream_attempt_recording_supports_ranges_and_downloads(self):
+        attempt = DanceAttempt.objects.create(
+            user=self.user,
+            reference_video=self.video,
+            reference_title='Fancy',
+            recording=SimpleUploadedFile('attempt.mp4', b'fake attempt bytes', content_type='video/mp4'),
+        )
+
+        response = self.client.get(f'{self.BASE_URL}/{attempt.id}/stream/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'video/mp4')
+        self.assertEqual(response['Content-Disposition'], 'inline; filename="Fancy.mp4"')
+        self.assertEqual(b''.join(response.streaming_content), b'fake attempt bytes')
+
+        response = self.client.get(
+            f'{self.BASE_URL}/{attempt.id}/stream/',
+            HTTP_RANGE='bytes=0-4',
+        )
+        self.assertEqual(response.status_code, status.HTTP_206_PARTIAL_CONTENT)
+        self.assertEqual(response['Content-Range'], 'bytes 0-4/18')
+        self.assertEqual(b''.join(response.streaming_content), b'fake ')
+
+        response = self.client.get(
+            f'{self.BASE_URL}/{attempt.id}/stream/',
+            {'download': '1'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Disposition'], 'attachment; filename="Fancy.mp4"')
+        response.close()
+
+    def test_stream_attempt_recording_is_owner_only(self):
+        attempt = DanceAttempt.objects.create(
+            user=self.other_user,
+            reference_video=self.video,
+            reference_title='Fancy',
+            recording=SimpleUploadedFile('attempt.mp4', b'fake attempt bytes', content_type='video/mp4'),
+        )
+
+        response = self.client.get(f'{self.BASE_URL}/{attempt.id}/stream/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_reanalyze_failed_attempt_success(self):
         # GIVEN a failed analysis status attempt

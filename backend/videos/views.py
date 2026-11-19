@@ -58,7 +58,7 @@ from .models import Video
 from .pagination import VideoPagination
 from .serializers import LibraryVideoSerializer, VideoSerializer, VideoUploadSerializer
 from .services import VideoServiceError
-from .streaming import range_file_response
+from core.streaming import range_file_response
 
 
 def not_implemented():
