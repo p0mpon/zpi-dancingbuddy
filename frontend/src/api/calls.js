@@ -288,7 +288,7 @@ export async function getFullLibraryVideo(id){
     }
 }
 
-export async function LikeVideo({id}) {
+export async function LikeVideo(id) {
     try {
         const response = await api.put(API_ENDPOINTS.like_video(id))
         return response.data;
@@ -298,7 +298,7 @@ export async function LikeVideo({id}) {
     }
 }
 
-export async function UnlikeVideo({id}) {
+export async function UnlikeVideo(id) {
     try {
         const response = await api.delete(API_ENDPOINTS.like_video(id))
         return response.data;
