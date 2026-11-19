@@ -1,14 +1,18 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getFullVideo, getDanceAttemptsForVideo } from "../api/calls";
+import { getDanceAttemptsForVideo } from "../api/calls";
+import {VIDEO_FETCH_CONFIGS} from "../config/video_fetch_config";
 
 const VideoContext = createContext(null);
 
-export const VideoProvider = ({ videoId, children }) => {
+export const VideoProvider = ({ mode, videoId, children }) => {
     const [currentVideo, setCurrentVideo] = useState(null);
 
     const [attempts, setAttempts] = useState([]);
     const [nextAttemptsUrl, setNextAttemptsUrl] = useState(null);
     const [loadingAttempts, setLoadingAttempts] = useState(true);
+    
+    const config = VIDEO_FETCH_CONFIGS[mode] || VIDEO_FETCH_CONFIGS.general;
+    const {getVideoDetails, getFullVideo} = config;
 
     useEffect(() => {
         if (!videoId) return;

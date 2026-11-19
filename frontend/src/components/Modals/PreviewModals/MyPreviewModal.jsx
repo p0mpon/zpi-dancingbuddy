@@ -7,7 +7,7 @@ import {PREVIEW_MODALS_CONFIGS} from "../../../config/preview_config";
 export default function MyPreviewModal({previewVideo, onHide, switchToVideoView}) {
     const videoId = previewVideo?.id || previewVideo;
     return (
-        <VideoProvider videoId={videoId}>
+        <VideoProvider mode={'user-specific'} videoId={videoId}>
             <VideoPreviewModal
                 onHide={onHide}
                 switchToVideoView={switchToVideoView}
