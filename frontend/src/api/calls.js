@@ -102,7 +102,7 @@ export async function getDanceAttemptStatus(taskId) {
 
 export async function editVideo(id, videoData) {
     try {
-        const response = await api.put(API_ENDPOINTS.video_details(id, videoData))
+        const response = await api.put(API_ENDPOINTS.video_details(id), videoData)
         return response.data;
     } catch (e) {
         console.error(e);
@@ -122,15 +122,37 @@ export async function deleteVideo(id) {
 
 //--- auth endpoints ---
 
-export async function loginUser(username, password) {
+export async function getCSRFToken(){
     try {
-        const response = await api.post(API_ENDPOINTS.login, {
-            username: username,
-            password: password
-        });
+        await api.get(API_ENDPOINTS.csrf);
+    } catch (e) {
+        console.error("Failed to fetch CSRF token", e);
+        throw e;
+    }
+}
+
+export async function registerUser(userData) {
+    try {
+        const response = await api.post(API_ENDPOINTS.register, userData);
         return response.data;
-    } catch (error) {
-        return false;
+    } catch (e) {
+        throw e;
+    }
+}
+export async function loginUser(userData) {
+    try {
+        const response = await api.post(API_ENDPOINTS.login, userData);
+        return response.data;
+    } catch (e) {
+        throw e;
+    }
+}
+
+export async function logoutUser() {
+    try {
+        await api.post(API_ENDPOINTS.logout);
+    } catch (e) {
+        throw e;
     }
 }
 
@@ -138,8 +160,27 @@ export async function getUser(nickname) {
     try {
         const response = await api.get(API_ENDPOINTS.public_profile(nickname))
         return response.data;
-    } catch (error) {
-        return false;
+    } catch (e) {
+        if (e.response?.status === 404) {
+            return null;
+        }
+
+        console.error(`Unexpected error fetching user "${nickname}":`, e);
+        throw e;
+    }
+}
+
+export async function getCurrentUser() {
+    try {
+        const response = await api.get(API_ENDPOINTS.current_user);
+        return response.data;
+    } catch (e){
+        if (e.response?.status === 401) {
+            return null;
+        }
+
+        console.error("Failed to fetch current user session:", e);
+        return null;
     }
 }
 

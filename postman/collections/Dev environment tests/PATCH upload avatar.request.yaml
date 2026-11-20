@@ -1,0 +1,29 @@
+$kind: http-request
+description: |-
+  Upload an avatar (multipart/form-data). Pick a JPEG or PNG in the `avatar` row
+  (a phone photo is the best test).
+
+  **200** with the current user. `avatar_url` ends in `.webp`: the file is stored as a
+  512×512 square WebP, turned upright by EXIF, EXIF removed. The old avatar file is deleted.
+
+  Open `avatar_url` in the browser: a square, upright image, `Content-Type: image/webp`.
+  Size and EXIF check (stored file):
+  `docker compose exec dancing-buddy-backend python -c "from PIL import Image; import glob,os; f=max(glob.glob('/app/media/avatars/*/*.webp'), key=os.path.getmtime); i=Image.open(f); print(f, i.format, i.size, dict(i.getexif()))"`
+  → `WEBP (512, 512) {}`.
+
+  **400** on `avatar`: not a JPEG/PNG, over 5 MB, over 50 megapixels, or unreadable.
+url: "{{base}}/users/me/"
+method: PATCH
+body:
+  type: formdata
+  content:
+    - type: file
+      key: avatar
+      src: []
+      description: "JPEG or PNG, max 5 MB, max 50 megapixels"
+      disabled: false
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 10000
