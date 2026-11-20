@@ -4,6 +4,7 @@ import io
 import shutil
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
@@ -15,6 +16,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
+from core.images import ImageProcessingError
 from dance_attempts.models import DanceAttempt
 from videos.models import AnalysisStatus, Video, Visibility
 
@@ -255,6 +257,42 @@ class MeTests(AccountsApiTestCase):
                 response = self.client.patch('/api/users/me/', {'avatar': file}, format='multipart')
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
                 self.assertIn('avatar', response.data)
+
+    def test_avatar_is_stored_as_512_webp(self):
+        response = self.client.patch('/api/users/me/', {'avatar': image_file(size=(40, 30))}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.avatar.name.startswith(f'avatars/user_{self.user.pk}/'))
+        self.assertTrue(self.user.avatar.name.endswith('.webp'))
+        with Image.open(Path(settings.MEDIA_ROOT, self.user.avatar.name)) as stored:
+            self.assertEqual(stored.format, 'WEBP')
+            self.assertEqual(stored.size, (512, 512))
+
+    def test_avatar_with_too_many_pixels_is_400(self):
+        with patch('accounts.serializers.MAX_AVATAR_PIXELS', 100):
+            response = self.client.patch('/api/users/me/', {'avatar': image_file(size=(20, 20))}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('avatar', response.data)
+
+    def test_avatar_processing_failure_is_400_not_500(self):
+        # MEDIA_ROOT is shared by the tests of this class: compare before / after, not against empty.
+        files_before = set(Path(settings.MEDIA_ROOT, 'avatars').rglob('*.*'))
+        with patch('accounts.serializers.make_square_webp', side_effect=ImageProcessingError('x')):
+            response = self.client.patch('/api/users/me/', {'avatar': image_file()}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('avatar', response.data)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.avatar)
+        self.assertEqual(set(Path(settings.MEDIA_ROOT, 'avatars').rglob('*.*')), files_before)
+
+    def test_patch_without_avatar_keeps_the_avatar(self):
+        self.client.patch('/api/users/me/', {'avatar': image_file()}, format='multipart')
+        self.user.refresh_from_db()
+        before = self.user.avatar.name
+        self.client.patch('/api/users/me/', {'bio': 'hello'}, format='multipart')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.avatar.name, before)
+        self.assertTrue(Path(settings.MEDIA_ROOT, before).is_file())
 
     def test_change_username(self):
         response = self.client.patch('/api/users/me/username/', {'username': 'dancer02', 'password': PASSWORD},

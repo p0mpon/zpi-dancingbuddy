@@ -238,6 +238,21 @@ removed via `DELETE /api/users/me/avatar/`.
 
 **Change:** ~~required, unlimited~~ → **nullable, max 5 MB, removable**.
 
+**Processing (DAN-172):** accepted input stays JPEG/PNG, max 5 MB; only what is *stored* changes.
+- Every uploaded avatar is turned upright by EXIF, centre-cropped to a square, resized to **512×512** and saved as
+  **WebP, quality 80**. The original is not kept. 512 covers the largest use today (96 px circle on 3× screens) and a
+  bigger profile page later; since originals are not kept, the size cannot be raised later.
+- EXIF is removed (GPS location, camera model, date). The ICC colour profile is kept.
+- Transparency is kept (RGBA); everything else becomes RGB. Animated PNG → first frame only.
+- Small images are upscaled, so clients always get the same size.
+- New limit: **max 50 megapixels** (width × height), checked before decoding → 400. A 5 MB single-colour PNG can be
+  400 MP ≈ 1.6 GB of RAM once decoded.
+- Admin uploads are not processed.
+- No backfill: existing avatars (dev data only) stay as they are.
+- `avatar_url` stays `null` when there is no avatar; the default image is the frontend's job.
+- The generic image code lives in `backend/core/images.py` (video thumbnails will reuse it); the avatar-specific
+  values and the call are in `UpdateProfileSerializer.validate_avatar`.
+
 ⚠️ The code field is named differently (D2.5).
 
 ### 🟢 D2.5 ➕ Avatar field name in code
