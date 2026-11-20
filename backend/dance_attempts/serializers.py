@@ -18,7 +18,7 @@ class DanceAttemptSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'status', 'analysis_error_code', 'score', 'reference_video_id',
             'score_diff_previous', 'score_diff_best', 
-            'reference_title', 'created_at'
+            'reference_video_id', 'reference_title', 'created_at'
         )
         read_only_fields = fields
 

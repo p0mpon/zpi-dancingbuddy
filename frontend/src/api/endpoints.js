@@ -34,5 +34,6 @@ export const API_ENDPOINTS = {
     "dance_attempt_status": (taskId) => `dance-attempts/${taskId}/status/`, // GET
     "retrieve_dance_attempt": (attempt_id) => `dance-attempts/${attempt_id}/`,      //GET, DELETE
     "attempt_reanalysis": (attempt_id) => `dance-attempts/${attempt_id}/reanalyze/`,
+    "dance_attempt_stream": (attempt_id) => `dance-attempts/${attempt_id}/stream/`, // GET
     
 };

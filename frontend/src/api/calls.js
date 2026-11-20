@@ -42,6 +42,13 @@ export async function getVideoDetails(id) {
     }
 }
 
+export const getVideoStream = async (videoId) => {
+    const response = await api.get(API_ENDPOINTS.video_stream(videoId), {
+        responseType: 'blob',
+    });
+    return URL.createObjectURL(response.data);
+};
+
 export async function getFullVideo(id) {
     try {
         const response = await api.get(API_ENDPOINTS.video_details(id))
@@ -99,6 +106,13 @@ export async function getDanceAttemptStatus(taskId) {
         throw e;
     }
 }
+
+export const getDanceAttemptStream = async (attemptId) => {
+    const response = await api.get(API_ENDPOINTS.dance_attempt_stream(attemptId), {
+        responseType: 'blob',
+    });
+    return URL.createObjectURL(response.data);
+};
 
 export async function editVideo(id, videoData) {
     try {

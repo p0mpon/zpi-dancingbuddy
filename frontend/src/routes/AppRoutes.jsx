@@ -10,6 +10,7 @@ import MainLayout from "../layouts/MainLayout";
 import LoginRequiredRoute from "./LoginRequiredRoute";
 import {Logout} from "../pages/Auth/Logout";
 import Practice from "../pages/Practice";
+import Score from "../pages/Score";
 import LearningLayout from "../layouts/LearningLayout";
 
 export default function AppRoutes() {
@@ -23,6 +24,7 @@ export default function AppRoutes() {
             </Route>
 
             <Route element={<MainLayout showSearch={false}/>}>
+                <Route path="/score/:attemptId" element={<Score/>}/>
                 <Route element={<LoginRequiredRoute/>}>
                     <Route path="/account" element={<UserDashboard/>}/>
                 </Route>

@@ -124,7 +124,11 @@ export default function Practice() {
                     if (result && result.status === 'completed') {
                         clearInterval(pollInterval);
                         navigate(`/score/${result.data.attempt_id}`, {
-                            state: { scoreData: result.data, localVideoUrl: localVideoUrlRef.current }
+                            state: {
+                                scoreData: result.data,
+                                localVideoUrl: localVideoUrlRef.current,
+                                instructorVideoUrl: currentVideo.file,
+                            }
                         });
                     } else if (result && result.status === 'failed') {
                         clearInterval(pollInterval);
@@ -274,7 +278,11 @@ export default function Practice() {
                 setTaskId(response.task_id);
             } else {
                 navigate(`/score/${response.id}`, {
-                    state: { scoreData: response, localVideoUrl: localVideoUrlRef.current }
+                    state: {
+                        scoreData: response,
+                        localVideoUrl: localVideoUrlRef.current,
+                        instructorVideoUrl: currentVideo.file,
+                    }
                 });
             }
         } catch (error) {
