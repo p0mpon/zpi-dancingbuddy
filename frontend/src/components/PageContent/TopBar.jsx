@@ -127,15 +127,6 @@ export default function TopBar({showSearch, onOpenUpload}) {
                 )}
 
                 <Nav className="ms-auto align-items-center gap-3">
-                    {/*<Button*/}
-                    {/*    variant="primary"*/}
-                    {/*    onClick={seedVideos}*/}
-                    {/*    className="d-flex align-items-center gap-2 px-3 py-2 fw-semibold shadow-sm"*/}
-                    {/*>*/}
-                    {/*    <Upload size={16}/>*/}
-                    {/*    <span>Seed</span>*/}
-                    {/*</Button>*/}
-
                     <Button
                         variant="primary"
                         onClick={onOpenUpload}
