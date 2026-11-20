@@ -13,6 +13,8 @@ from django.contrib.auth import password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from core.images import ImageProcessingError, make_square_webp
+
 from .models import User
 
 MAX_PASSWORD_LENGTH = 128
@@ -20,6 +22,8 @@ MAX_PASSWORD_LENGTH = 128
 AVATAR_FORMATS = {'JPEG', 'PNG'}
 MAX_AVATAR_SIZE_MB = 5
 MAX_AVATAR_SIZE_BYTES = MAX_AVATAR_SIZE_MB * 1024 * 1024
+AVATAR_SIZE = 512               # px, square (decision 1)
+MAX_AVATAR_PIXELS = 50_000_000  # width x height (decision 5)
 
 
 def password_field():
@@ -127,12 +131,25 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         return unique_ignoring_case('nickname', value, exclude=self.instance)
 
     def validate_avatar(self, file):
+        """Check the upload, then return the PROCESSED avatar (512x512 WebP), not the upload (DAN-172)."""
         # ImageField has already opened the file with Pillow (a broken or non-image file is a 400 there).
         if file.size > MAX_AVATAR_SIZE_BYTES:
             raise serializers.ValidationError(f'Avatar is too large (max {MAX_AVATAR_SIZE_MB} MB).')
         if getattr(file, 'image', None) is None or file.image.format not in AVATAR_FORMATS:
             raise serializers.ValidationError('Avatar must be a JPEG or PNG image.')
-        return file
+
+        # Checked from the header, before any pixel is decoded: processing decodes everything,
+        # and a small PNG can describe a gigantic image.
+        width, height = file.image.size
+        if width * height > MAX_AVATAR_PIXELS:
+            raise serializers.ValidationError(
+                f'Avatar is too large (max {MAX_AVATAR_PIXELS // 1_000_000} megapixels).')
+
+        # The .webp name makes user_avatar_upload_path store avatars/user_<id>/<uuid>.webp.
+        try:
+            return make_square_webp(file, size=AVATAR_SIZE, name='avatar.webp')
+        except ImageProcessingError:
+            raise serializers.ValidationError('Avatar image could not be processed.')
 
 
 class UpdateUsernameSerializer(serializers.ModelSerializer):

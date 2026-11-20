@@ -1,0 +1,20 @@
+$kind: http-request
+description: |-
+  Validation check: pick a GIF (or a text file renamed to `.png`) in the `avatar` row.
+
+  **400** with `{"avatar": [...]}`. The current avatar is not changed.
+url: "{{base}}/users/me/"
+method: PATCH
+body:
+  type: formdata
+  content:
+    - type: file
+      key: avatar
+      src: []
+      description: "Pick a GIF or a non-image file on purpose"
+      disabled: false
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 10500
