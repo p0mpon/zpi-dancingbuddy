@@ -13,6 +13,15 @@ const extractRefVideoId = (payload) =>
     payload?.video ||
     null;
 
+// Read a numeric delta field directly from the attempt payload
+const extractDeltaValue = (payload, key) => {
+    if (!payload || typeof payload !== 'object') return null;
+    const val = payload[key];
+    if (val === undefined || val === null || val === '') return null;
+    const num = Number(val);
+    return Number.isFinite(num) ? num : null;
+};
+
 // Normalize and sort ScoredFrame entries from score_details
 const getScoredFrames = (data) => {
     const rawFrames = Array.isArray(data?.score_details)
@@ -48,6 +57,41 @@ const waitForSeeked = (videoEl, timeoutMs = 400) =>
         const timer = setTimeout(finish, timeoutMs);
         videoEl.addEventListener('seeked', finish, { once: true });
     });
+
+function ScoreDeltaBadge({ delta }) {
+    if (delta === null || !Number.isFinite(delta)) {
+        return (
+            <Badge bg="secondary" className="fs-6 px-3 py-2 rounded-pill">
+                &mdash;
+            </Badge>
+        );
+    }
+
+    const rounded = Math.round(delta);
+    const absPts = Math.abs(rounded);
+
+    if (rounded > 0) {
+        return (
+            <Badge bg="success" className="fs-6 px-3 py-2 rounded-pill">
+                &#9650; {absPts} pts
+            </Badge>
+        );
+    }
+
+    if (rounded < 0) {
+        return (
+            <Badge bg="danger" className="fs-6 px-3 py-2 rounded-pill">
+                &#9660; {absPts} pts
+            </Badge>
+        );
+    }
+
+    return (
+        <Badge bg="secondary" className="fs-6 px-3 py-2 rounded-pill">
+            0 pts
+        </Badge>
+    );
+}
 
 export default function Score() {
     const { attemptId } = useParams();
@@ -239,6 +283,9 @@ export default function Score() {
     const totalScore = Math.round(scoreData?.score ?? scoreData?.total_score ?? 0);
     const scoreColor = totalScore >= 80 ? 'text-success' : totalScore >= 50 ? 'text-warning' : 'text-danger';
 
+    const diffFromPrevious = extractDeltaValue(scoreData, 'score_diff_previous');
+    const diffFromBest = extractDeltaValue(scoreData, 'score_diff_best');
+
     const scoredFrames = getScoredFrames(scoreData);
     const activeFrame = scoredFrames.reduce((closest, frame) => {
         if (!closest) return frame;
@@ -289,13 +336,19 @@ export default function Score() {
                         </div>
                     )}
 
-                    <div className="text-md-end">
-                        <div className="text-secondary text-uppercase small fw-semibold mb-1">
-                            vs. Last Attempt
+                    <div className="d-flex align-items-center gap-4 text-md-end">
+                        <div>
+                            <div className="text-secondary text-uppercase small fw-semibold mb-1">
+                                vs. Last Attempt
+                            </div>
+                            <ScoreDeltaBadge delta={diffFromPrevious} />
                         </div>
-                        <Badge bg="success" className="fs-6 px-3 py-2 rounded-pill">
-                            &#9650; 28 pts
-                        </Badge>
+                        <div>
+                            <div className="text-secondary text-uppercase small fw-semibold mb-1">
+                                vs. Best Attempt
+                            </div>
+                            <ScoreDeltaBadge delta={diffFromBest} />
+                        </div>
                     </div>
                 </div>
 
