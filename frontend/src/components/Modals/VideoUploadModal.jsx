@@ -67,7 +67,7 @@ export function VideoUploadModal({ show, onClose }) {
             const response = await uploadNewVideo(data);
             console.log("response", response);
 
-            setUploadSuccessMsg("Video uploaded successfully!");
+            setUploadSuccessMsg("Video uploaded successfully! Beginning analysis...");
 
             setUploadForm({
                 title: "",
