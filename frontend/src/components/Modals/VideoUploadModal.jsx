@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {Modal, Form, Button, Spinner, Alert, Col} from 'react-bootstrap';
 import {CheckCircleFill, Upload} from 'react-bootstrap-icons';
 import {uploadNewVideo} from "../../api/calls";
@@ -17,6 +17,30 @@ export function VideoUploadModal({ show, onClose }) {
     const [isUploading, setIsUploading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [uploadSuccessMsg, setUploadSuccessMsg] = useState("");
+
+    const [isVisible, setIsVisible] = useState(false);
+
+    useEffect(() => {
+        if (!uploadSuccessMsg) {
+            setIsVisible(false);
+            return;
+        }
+
+        setIsVisible(true);
+
+        const fadeTimer = setTimeout(() => {
+            setIsVisible(false);
+        }, 4000);
+
+        const clearTimer = setTimeout(() => {
+            setUploadSuccessMsg("");
+        }, 4500);
+
+        return () => {
+            clearTimeout(fadeTimer);
+            clearTimeout(clearTimer);
+        };
+    }, [uploadSuccessMsg]);
 
     async function handleUploadSubmit(e) {
         e.preventDefault();
@@ -43,7 +67,7 @@ export function VideoUploadModal({ show, onClose }) {
             const response = await uploadNewVideo(data);
             console.log("response", response);
 
-            setUploadSuccessMsg("Video uploaded successfully!");
+            setUploadSuccessMsg("Video uploaded successfully! Beginning analysis...");
 
             setUploadForm({
                 title: "",
@@ -66,10 +90,22 @@ export function VideoUploadModal({ show, onClose }) {
     return (
         <>
             {uploadSuccessMsg && (
-                <div className="position-fixed bottom-0 end-0 p-3" style={{zIndex: 1080}}>
-                    <Alert variant="success" onClose={() => setUploadSuccessMsg("")} dismissible
-                           className="shadow-lg d-flex align-items-center gap-2">
-                        <CheckCircleFill size={18}/>
+                <div
+                    className="position-fixed bottom-0 end-0 p-3"
+                    style={{
+                        zIndex: 1080,
+                        opacity: isVisible ? 1 : 0,
+                        transition: "opacity 0.5s ease-out",
+                        pointerEvents: isVisible ? "auto" : "none",
+                    }}
+                >
+                    <Alert
+                        variant="success"
+                        onClose={() => setUploadSuccessMsg("")}
+                        dismissible
+                        className="shadow-lg d-flex align-items-center gap-2 mb-0"
+                    >
+                        <CheckCircleFill size={18} />
                         <span>{uploadSuccessMsg}</span>
                     </Alert>
                 </div>
