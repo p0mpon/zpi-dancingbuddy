@@ -67,7 +67,7 @@ export default function EditorTab() {
             song_title: draftVideo.song_title ?? "",
             song_author: draftVideo.song_author ?? "",
             description: draftVideo.description ?? "",
-            difficulty: draftVideo.difficulty ?? "",
+            difficulty: draftVideo.difficulty !== "" ? draftVideo.difficulty : null,
         };
 
         try {
