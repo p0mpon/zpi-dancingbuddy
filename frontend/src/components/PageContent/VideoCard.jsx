@@ -1,8 +1,11 @@
-import {Card} from "react-bootstrap";
+import {Badge, Card} from "react-bootstrap";
 import React from "react";
 import {Film} from "react-bootstrap-icons";
+import UserAvatar from "./UserAvatar";
 
-export default function VideoCard(video, showPreview) {
+export default function VideoCard({mode, video, showPreview}) {
+    if (!video) return null;
+
     return (
         <Card
             bg="black"
@@ -24,15 +27,27 @@ export default function VideoCard(video, showPreview) {
                 </div>
             ) : (
                 <div className="ratio ratio-16x9 bg-dark d-flex align-items-center justify-content-center">
-                    <Film size={48} className="text-secondary" />
+                    <Film size={48} className="text-secondary"/>
                 </div>
             )}
 
             <Card.Body className="d-flex flex-column justify-content-between p-3">
                 <div>
-                    <Card.Title className="fs-4 fw-bold text-light line-clamp-2 mb-1">
-                        {video.title}
-                    </Card.Title>
+                    <div className="d-flex align-items-center gap-2 mb-1">
+                        <Card.Title className="fs-4 fw-bold text-light line-clamp-2 mb-0">
+                            {video.title}
+                        </Card.Title>
+
+                        {video.visibility === 'private' && (
+                            <Badge
+                                bg="transparent"
+                                text="light"
+                                className="border border-secondary rounded-pill fw-normal"
+                            >
+                                Private
+                            </Badge>
+                        )}
+                    </div>
 
                     {(video.song_title || video.song_author) && (
                         <p className="text-secondary fs-5 mb-2">
@@ -42,11 +57,20 @@ export default function VideoCard(video, showPreview) {
                     )}
                 </div>
 
+
                 <div
                     className="pt-3 border-top border-secondary d-flex align-items-center justify-content-between text-muted fs-6 mt-2">
                     <div className="d-flex align-items-center gap-2">
-                                                <span className="text-light">Uploaded by <strong
-                                                    className="text-white">{video.author}</strong></span>
+                        {mode === 'general' ? (
+                            <>
+                                <UserAvatar avatarUrl={video.author_avatar_url} size={'24px'}/>
+                                <span><strong
+                                    className="text-white">{video.author_nickname}</strong></span>
+                            </>
+                        ) : (
+                            <span className="text-light">Analysis status: <strong
+                                className="text-white">{video.analysis_status}</strong></span>
+                        )}
                     </div>
                 </div>
             </Card.Body>

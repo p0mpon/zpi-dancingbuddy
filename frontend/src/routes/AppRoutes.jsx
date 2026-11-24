@@ -16,7 +16,10 @@ export default function AppRoutes() {
     return (
         <Routes>
             <Route element={<MainLayout showSearch={true}/>}>
-                <Route path="/" element={<VideoList/>}/>
+                <Route path="/" element={<VideoList mode="general"/>}/>
+                <Route element={<LoginRequiredRoute/>}>
+                    <Route path="/my-videos" element={<VideoList mode="user_specific"/>}/>
+                </Route>
             </Route>
 
             <Route element={<MainLayout showSearch={false}/>}>
@@ -24,7 +27,7 @@ export default function AppRoutes() {
                     <Route path="/account" element={<UserDashboard/>}/>
                 </Route>
             </Route>
-            
+
             <Route element={<LearningLayout/>}>
                 <Route path="/video/:id" element={<Practice/>}/>
             </Route>
@@ -35,5 +38,6 @@ export default function AppRoutes() {
                 <Route path="/logout" element={<Logout/>}/>
             </Route>
         </Routes>
-    );
+    )
+        ;
 }
