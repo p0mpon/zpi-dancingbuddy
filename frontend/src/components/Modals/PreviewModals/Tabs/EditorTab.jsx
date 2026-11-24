@@ -1,7 +1,7 @@
 import {Alert, Button, Form, Modal, Spinner} from "react-bootstrap";
 import {useVideo} from "../../../../context/VideoContext";
-import {useEffect, useState} from "react";
-import {DIFFICULTY_OPTIONS} from "../../../../config/difficulty";
+import {useState} from "react";
+import {DIFFICULTY_OPTIONS} from "../../../../config/filters";
 import {deleteVideo, editVideo, privateVideo, publishVideo} from "../../../../api/calls";
 
 export default function EditorTab() {

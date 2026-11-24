@@ -1,60 +1,29 @@
-import React, {useEffect, useState} from 'react';
-import {Navbar, Nav, Form, InputGroup, Button, Dropdown, FormCheck} from 'react-bootstrap';
-import {Filter, Search, Upload} from 'react-bootstrap-icons';
+import React, { useEffect, useState } from "react";
+import { Navbar, Nav, Form, InputGroup, Button } from "react-bootstrap";
+import { Search, Upload } from "react-bootstrap-icons";
 import UserMenu from "./UserMenu";
-import {useSearchParams, Link} from "react-router-dom";
-import {DIFFICULTY_OPTIONS} from "../../config/difficulty";
-import {ReactComponent as AppLogo} from "../../assets/ob-logo.svg";
+import { Link } from "react-router-dom";
+import { ReactComponent as AppLogo } from "../../assets/ob-logo.svg";
+import useVideoListParams from "../../hooks/useVideoListParams";
 
-export default function TopBar({showSearch, onOpenUpload}) {
-    const [searchParams, setSearchParams] = useSearchParams();
-    const searchQuery = searchParams.get('search') || '';
-
-    const difficulties = searchParams.get('difficulty');
-    const selectedDifficulties = difficulties ? difficulties.split(',') : [];
-
-    const [inputValue, setInputValue] = useState(searchQuery);
+export default function TopBar({ showSearch, onOpenUpload }) {
+    const { query, setQuery } = useVideoListParams();
+    const [inputValue, setInputValue] = useState(query);
 
     useEffect(() => {
-        if (searchQuery === '' && inputValue !== '') {
-            setInputValue('');
-        }
-    }, [searchQuery]);
+        setInputValue(query);
+    }, [query]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (inputValue !== searchQuery) {
-                const newParams = new URLSearchParams(searchParams);
-                if (inputValue.trim()) {
-                    newParams.set('search', inputValue);
-                } else {
-                    newParams.delete('search');
-                }
-                setSearchParams(newParams, {replace: true});
+            if (inputValue.trim() !== query) {
+                setQuery(inputValue);
             }
         }, 350);
 
         return () => clearTimeout(timer);
-    }, [inputValue]);
+    }, [inputValue, query, setQuery]);
 
-    const handleDifficultyToggle = (value) => {
-        const newParams = new URLSearchParams(searchParams);
-        let updated;
-
-        if (selectedDifficulties.includes(value)) {
-            updated = selectedDifficulties.filter(item => item !== value);
-        } else {
-            updated = [...selectedDifficulties, value];
-        }
-
-        if (updated.length > 0) {
-            newParams.set('difficulty', updated.join(','));
-        } else {
-            newParams.delete('difficulty');
-        }
-
-        setSearchParams(newParams);
-    };
     return (
         <Navbar bg="dark" variant="dark" expand="md" sticky="top"
                 className="border-bottom border-secondary px-3 px-lg-4 py-2">
@@ -67,50 +36,18 @@ export default function TopBar({showSearch, onOpenUpload}) {
                 </Navbar.Brand>
             </Link>
 
-            <Navbar.Toggle aria-controls="main-navbar"/>
+            <Navbar.Toggle aria-controls="main-navbar" />
 
             <Navbar.Collapse id="main-navbar">
                 {showSearch && (
-                    <Form className="d-flex mx-auto gap-3" style={{width: '420px'}}
-                          onSubmit={(e) => e.preventDefault()}>
-
-                        <Dropdown>
-                            <Dropdown.Toggle variant="outline-secondary" id="difficulty-dropdown"
-                                             className="text-light d-flex align-items-center gap-1">
-                                <Filter size={14}/>
-                            </Dropdown.Toggle>
-
-                            <Dropdown.Menu className="bg-dark border-secondary p-2 shadow" style={{minWidth: '180px'}}>
-                                <div className="text-light small px-2 pb-1 border-bottom border-secondary mb-1">
-                                    Filter by Difficulty
-                                </div>
-                                {DIFFICULTY_OPTIONS.map(option => {
-                                    const isChecked = selectedDifficulties.includes(option.key);
-                                    return (
-                                        <div
-                                            key={option.key}
-                                            className="dropdown-item text-light bg-transparent px-2 py-1 rounded cursor-pointer"
-                                            style={{cursor: 'pointer'}}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDifficultyToggle(option.key);
-                                            }}
-                                        >
-                                            <FormCheck
-                                                type="checkbox"
-                                                id={`diff-${option.key}`}
-                                                label={option.value}
-                                                checked={isChecked}
-                                                onChange={() => {
-                                                }}
-                                                className="user-select-none custom-checkbox text-light pointer-event-none"
-                                                style={{cursor: 'pointer'}}
-                                            />
-                                        </div>
-                                    );
-                                })}
-                            </Dropdown.Menu>
-                        </Dropdown>
+                    <Form
+                        className="d-flex mx-auto gap-3"
+                        style={{ width: "420px" }}
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            setQuery(inputValue);
+                        }}
+                    >
                         <InputGroup>
                             <Form.Control
                                 type="search"
@@ -132,11 +69,11 @@ export default function TopBar({showSearch, onOpenUpload}) {
                         onClick={onOpenUpload}
                         className="d-flex align-items-center gap-2 px-3 py-2 fw-semibold shadow-sm"
                     >
-                        <Upload size={16}/>
+                        <Upload size={16} />
                         <span>Upload Video</span>
                     </Button>
 
-                    <UserMenu/>
+                    <UserMenu />
                 </Nav>
             </Navbar.Collapse>
         </Navbar>

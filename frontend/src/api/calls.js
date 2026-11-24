@@ -98,7 +98,7 @@ export async function getUser(nickname) {
 
 //--- my video endpoints ---
 
-export async function getMyVideos({searchQuery, difficulty, analysisStatus, visibility, nextUrl}) {
+export async function getMyVideos({searchQuery, difficulty, analysisStatus, visibility, ordering, nextUrl}) {
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -111,6 +111,7 @@ export async function getMyVideos({searchQuery, difficulty, analysisStatus, visi
         if (difficulty) params.difficulty = difficulty;
         if (analysisStatus) params.analysis_status = analysisStatus;
         if (visibility) params.visibility = visibility;
+        if (ordering) params.ordering = ordering;
 
         const response = await api.get(API_ENDPOINTS.my_videos, {params});
         return response.data;
@@ -219,7 +220,7 @@ export async function rerunAnalysis(video_id) {
 
 //--- library endpoints ---
 
-export async function getAllVideos({searchQuery, difficulty, nextUrl}) {
+export async function getAllVideos({searchQuery, difficulty, ordering, nextUrl}) {
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -230,6 +231,7 @@ export async function getAllVideos({searchQuery, difficulty, nextUrl}) {
         params.limit = MAIN_PAGE_LIMIT;
         if (searchQuery) params.search = searchQuery;
         if (difficulty) params.difficulty = difficulty;
+        if (ordering) params.ordering = ordering;
 
         const response = await api.get(API_ENDPOINTS.videos, {params});
         return response.data;
@@ -239,7 +241,7 @@ export async function getAllVideos({searchQuery, difficulty, nextUrl}) {
     }
 }
 
-export async function getLikedVideos({searchQuery, difficulty, nextUrl}) {
+export async function getLikedVideos({searchQuery, difficulty, ordering, nextUrl}) {
     try {
         if (nextUrl) {
             const response = await api.get(nextUrl)
@@ -250,6 +252,7 @@ export async function getLikedVideos({searchQuery, difficulty, nextUrl}) {
         params.limit = MAIN_PAGE_LIMIT;
         if (searchQuery) params.search = searchQuery;
         if (difficulty) params.difficulty = difficulty;
+        if (ordering) params.ordering = ordering;
 
         const response = await api.get(API_ENDPOINTS.liked_videos, {params});
         return response.data;
