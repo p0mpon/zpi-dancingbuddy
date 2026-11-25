@@ -1,17 +1,28 @@
+from pathlib import PurePosixPath
+
 from django.db import models
 from django.db.models import Q, CheckConstraint, Index
 from django.contrib.auth import get_user_model
-from videos.models import Video, AnalysisStatus
+from videos.models import AnalysisError, AnalysisStatus, Video
 
 User = get_user_model()
 
 def attempt_upload_path(instance, filename):
     """
-    Determines where the recording file is saved.
+    Where the uploaded (raw) recording is saved, relative to MEDIA_ROOT:
+    'dance_attempt/raw/<random>.<ext>'.
     """
     import uuid
     ext = filename.split('.')[-1]
-    return f"attempts/user_{instance.user.id}/{uuid.uuid4()}.{ext}"
+    return f"dance_attempt/raw/{uuid.uuid4()}.{ext}"
+
+
+def normalized_recording_path(raw_name):
+    """
+    Where the normalized copy of a recording goes, with the same name plus '_normalized':
+    'dance_attempt/raw/abc.mov' -> 'dance_attempt/normalized/abc_normalized.mp4'.
+    """
+    return f"dance_attempt/normalized/{PurePosixPath(raw_name).stem}_normalized.mp4"
 
 class DanceAttempt(models.Model):
     """
@@ -36,7 +47,11 @@ class DanceAttempt(models.Model):
     score_details = models.JSONField(null=True, blank=True)
     
     status = models.CharField(max_length=20, choices=AnalysisStatus.choices, default=AnalysisStatus.PENDING)
-    
+    # Same three fields and rules as on Video (videos/models.py).
+    analysis_error_code = models.PositiveSmallIntegerField(choices=AnalysisError.choices, null=True, blank=True)
+    analysis_runs = models.PositiveSmallIntegerField(default=0)
+    is_normalized = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -60,7 +75,15 @@ class DanceAttempt(models.Model):
             CheckConstraint(
                 condition=(Q(status='done', score__isnull=False) | (~Q(status='done') & Q(score__isnull=True))),
                 name='score_matches_status'
-            )
+            ),
+            CheckConstraint(
+                condition=Q(analysis_error_code__in=AnalysisError.values),
+                name='attempt_analysis_error_code_valid'
+            ),
+            CheckConstraint(
+                condition=Q(analysis_error_code__isnull=True) | Q(status=AnalysisStatus.FAILED),
+                name='attempt_analysis_error_code_only_when_failed'
+            ),
         ]
 
     def __str__(self):

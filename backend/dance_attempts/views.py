@@ -7,19 +7,19 @@ Dance attempts API. Routes (registered in zpi_app/urls.py):
     DELETE  /api/dance-attempts/{id}/                delete an attempt
     POST    /api/dance-attempts/{id}/reanalyze/      reanalyze an existing attempt (recalculates score and score_details)
     GET     /api/dance-attempts/{id}/status/         retrieve the status of an attempt (for polling)
-    GET     /api/dance-attempts/{id}/stream/         stream the user's recording
+    GET     /api/dance-attempts/{id}/stream/         the recording file (owner only, Range support for seeking)
 """
 import mimetypes
 
-from rest_framework.exceptions import NotFound
+from django.http import Http404
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import viewsets, mixins, status
 
 from . import services
 from .serializers import DanceAttemptDetailSerializer, DanceAttemptSerializer, DanceAttemptUploadSerializer
-from core.streaming import range_file_response
 from core.validators import parse_positive_int_param
+from core.streaming import range_file_response
 
 
 class DanceAttemptViewSet(
@@ -98,7 +98,7 @@ class DanceAttemptViewSet(
         
         try:
             attempt = services.reanalyze_attempt(attempt=attempt)
-        except services.AttemptNotFailedError as e:
+        except (services.AttemptNotFailedError, services.AnalysisRunLimitReached) as e:
             return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
             
         out_serializer = self.get_serializer(attempt)
@@ -112,25 +112,16 @@ class DanceAttemptViewSet(
 
     @action(detail=True, methods=['get'])
     def stream(self, request, pk=None):
-        """GET /api/dance-attempts/{id}/stream/"""
+        """GET /api/dance-attempts/{id}/stream/: my recording, with Range support so the player can seek."""
+        # get_object() only finds my own attempts, so someone else's attempt is 404 (recordings are private).
         attempt = self.get_object()
         if not attempt.recording:
-            raise NotFound('This dance attempt has no recording.')
-
+            raise Http404
         file_name = attempt.recording.name
-        content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
-        extension = file_name.rsplit('.', 1)[-1] if '.' in file_name else ''
-        filename = (
-            f'{attempt.reference_title}.{extension}'
-            if extension
-            else attempt.reference_title
-        )
-
         return range_file_response(
             request,
             attempt.recording,
-            content_type,
+            mimetypes.guess_type(file_name)[0] or 'application/octet-stream',
             as_attachment=request.query_params.get('download') == '1',
-            filename=filename,
+            filename=f'{attempt.reference_title}.{file_name.rsplit(".", 1)[-1]}',
         )
-        

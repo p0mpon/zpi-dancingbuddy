@@ -57,7 +57,7 @@ A video outside that set gives **404** (not 403), so the API doesn't reveal that
 | `DELETE` | `/api/videos/{id}/` | delete the row and the file | owner | 204 | 401, 404 |
 | `GET` | `/api/videos/{id}/stream/` | the video file, with Range support | owner or public; no login needed for public | 200, 206 | 404, 416 |
 | `GET` | `/api/videos/{id}/analysis/` | the whole analysis JSON | owner or public | 200 | 401, 404, 409 |
-| `GET` | `/api/videos/{id}/thumbnail/` | not implemented yet | owner | | 501 |
+| `POST` | `/api/videos/{id}/reanalyze/` | run a failed analysis again (needs runs left, max 5) | owner | 202 | 401, 404, 409 |
 
 `/api/library/` = **what I can dance**: public videos + all my own (`LibraryViewSet`, DAN-141):
 
@@ -106,7 +106,7 @@ best_score, created_at`.
 `PUT` / `DELETE .../like/` answer `{"likes_count": 3, "liked_by_me": true}`.
 
 `PUT` (full replace) is not supported → 405. `POST /analysis/` → 405: the analysis only
-starts on upload or when a new file is sent with PATCH.
+starts on upload, on an automatic retry, or on `POST /reanalyze/`.
 
 ### The video object
 
@@ -119,6 +119,8 @@ Returned by list, retrieve, upload and PATCH (`VideoSerializer`):
   "description": "Slow version",
   "file_size": 48213504.0,
   "analysis_status": "pending",
+  "analysis_error_code": null,
+  "thumbnail_url": null,
   "created_at": "2026-11-03T12:00:00Z"
 }
 ```
@@ -127,6 +129,8 @@ Returned by list, retrieve, upload and PATCH (`VideoSerializer`):
 |---|---|
 | `file_size` | bytes; read-only, computed on upload |
 | `analysis_status` | read-only: `pending` → `processing` → `done` or `failed` (see [Analysis status](#analysis-status)) |
+| `analysis_error_code` | read-only: null, or 1 / 2 / 3 / 4 / 5 / 99 when `failed` |
+| `thumbnail_url` | read-only: WebP, longest side 720 px; null until generated |
 
 Not in the object: `owner` (always you), the file path (use `/stream/`), `json_analysis` (use `/analysis/`, it can be large).
 
@@ -146,7 +150,7 @@ No videos = `{"count": 0, "next": null, "previous": null, "results": []}` with 2
 | `file` | yes | extension `mp4`, `mov` or `webm`; max 500 MB |
 
 → **201** with the video object (`analysis_status: "pending"`). The file is stored as
-`media/videos/user_<owner id>/<random>.<ext>` and the analysis is queued.
+`media/videos/raw/<random>.<ext>` and the analysis is queued; the normalized copy replaces it as `media/videos/normalized/<same name>_normalized.mp4`. No path contains a user id.
 An `owner` field in the form is ignored. → **400** with the field errors, e.g.
 `{"file": ["Allowed file types: mp4, mov, webm."]}`.
 
@@ -199,12 +203,17 @@ The JSON format isn't decided yet (list of `Frame` dicts vs DAN-35's `ChoreoData
 ```mermaid
 stateDiagram-v2
     [*] --> pending: POST upload
-    pending --> processing: worker starts
-    processing --> done: run_analysis() returned
-    processing --> failed: run_analysis() raised
-    done --> pending: PATCH with a new file
-    failed --> pending: PATCH with a new file
+    pending --> processing: a run starts (analysis_runs + 1)
+    processing --> done: normalized, thumbnail, run_analysis() returned
+    processing --> processing: normalization timeout or unexpected error, tries left: retried after 10 / 30 / 60 / 120 s (each try is a run)
+    processing --> failed: any other error, or the tries are used up: analysis_error_code set
+    failed --> pending: POST reanalyze (needs analysis_runs < 5)
 ```
+
+A run is capped at `MAX_ANALYSIS_RUNS = 5` (automatic retries and reanalyze share the counter). The error codes
+(`analysis_error_code`, `docs/api-decisions.md` D3.8) are 1 file missing, 2 unreadable, 3 normalization failed,
+4 normalization timeout (retried), 5 analysis failed, 99 unknown (retried). `analysis_runs` and `is_normalized` are
+not in the API.
 
 ---
 
@@ -226,16 +235,18 @@ Each layer has one job. The rule that matters most: **every write goes through `
 
 | File | What's in it                                                                                                                                                                                                                                          |
 |---|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `models.py` | `Video` (the VIDEO table from `db/diagram/v2.md`), `VideoQuerySet` (who sees which video: `owned_by`, `public`, `visible_to`), `AnalysisStatus` choices, `video_upload_path()` (where files are stored), constraints: `file_size >= 0`, status is one of the four values                                                          |
+| `models.py` | `Video` (the VIDEO table from `db/diagram/v2.md`), `VideoQuerySet` (who sees which video: `owned_by`, `public`, `visible_to`), `AnalysisStatus` and `AnalysisError` choices, `MAX_ANALYSIS_RUNS`, retry constants, `video_upload_path()` (where files are stored), constraints: `file_size >= 0`, status is one of the four values, error code valid and only on a failed row                                                          |
 | `serializers.py` | `VideoSerializer` (output + PATCH; a `ModelSerializer`, plus a write-only `file`), `VideoUploadSerializer` (POST; a plain `Serializer`, because the request's `file` isn't a model field), file checks `validate_filename()` / `validate_file_size()` |
-| `views.py` | `VideoViewSet` (`/api/videos/`): one method per endpoint (`list`, `create`, `retrieve`, `partial_update`, `destroy`, and the `stream`, `thumbnail`, `analysis` actions). `LibraryViewSet` (`/api/library/`): `list`, `retrieve`, and the `liked`, `like` actions; likes are written by `likes/services.py` |
+| `views.py` | `VideoViewSet` (`/api/videos/`): one method per endpoint (`list`, `create`, `retrieve`, `partial_update`, `destroy`, and the `stream`, `analysis`, `reanalyze` actions). `LibraryViewSet` (`/api/library/`): `list`, `retrieve`, and the `liked`, `like` actions; likes are written by `likes/services.py` |
 | `filters.py` | the query params of the video lists: `VideoFilterParams` / `LibraryFilterParams` / `MyVideosFilterParams` (validation), `filter_videos()` (filters + ordering), `annotate_for_library()` / `annotate_times_played()` / `only_liked_by()` (per-request values as subqueries) |
 | `pagination.py` | `VideoPagination`: `?limit=&offset=`, max 100 per page |
-| `services.py` | `upload_video`, `update_video`, `delete_video`, `start_analysis` (queues the task), `set_analysis_result` (status/result written by the task)                                                                                                         |
-| `tasks.py` | `analyse_video` (Celery task), `run_analysis()`: **TODO**, the entry point of the real analysis                                                                                                                                                       |
+| `services.py` | `upload_video`, `update_video`, `delete_video`, `start_analysis` (queues the task), `reanalyze_video`, and the writes of a run: `mark_video_processing`, `set_analysis_result`, `update_video_file`, `set_video_thumbnail`                                                                                                       |
+| `tasks.py` | `normalize_video_file` (starts a run: normalize once, Celery retry, error codes), `analyse_video` (thumbnail + analysis), `run_analysis()` (the entry point of the real analysis) |
+| `../core/ffmpeg.py` | ffprobe / ffmpeg wrappers shared with `dance_attempts`: `probe_video`, `read_duration_seconds`, `normalize_video`, `extract_frame`. No DB, no models (replaces `media_info.py`) |
 | `streaming.py` | `range_file_response()` (200 / 206 / 416), `parse_range_header()` (pure, unit-tested), `read_chunks()` (64 KB at a time)                                                                                                                              |
-| `admin.py` | `Video` in the Django admin (`/admin/`), `json_analysis` read-only                                                                                                                                                                                    |
+| `admin.py` | `Video` in the Django admin (`/admin/`), analysis fields read-only |
 | `tests.py` | `/api/videos/` API tests, task tests, Range parser tests |
+| `tests_processing.py` | normalization, thumbnail, error codes, retries, reanalyze (real ffmpeg clips) |
 | `tests_library.py` | DAN-141: `VideoQuerySet`, filters, annotations, `/api/library/` (list, detail, liked list, like) |
 
 Outside the app:
@@ -272,7 +283,7 @@ flowchart LR
     subgraph docker compose
         WEB["dancing-buddy-backend<br/>Django + DRF"]
         REDIS[("redis<br/>task queue")]
-        WORKER["celery-worker<br/>analyse_video"]
+        WORKER["celery-worker<br/>normalize_video_file, analyse_video"]
         DB[("db<br/>PostgreSQL")]
         MEDIA[/"backend/media/<br/>video files"/]
     end
@@ -280,14 +291,14 @@ flowchart LR
     FE -- "HTTP /api/videos/..." --> WEB
     WEB -- "rows" --> DB
     WEB -- "save / read / delete files" --> MEDIA
-    WEB -- "analyse_video.delay(id)" --> REDIS
+    WEB -- "normalize_video_file.delay(id)" --> REDIS
     REDIS -- "next task" --> WORKER
     WORKER -- "read file" --> MEDIA
     WORKER -- "status + json_analysis" --> DB
 ```
 
 Django and the worker never talk to each other directly: Redis carries only the task
-message (`analyse_video(42)`), and the worker writes the result straight into Postgres.
+message (`normalize_video_file(42)`), and the worker writes the result straight into Postgres.
 
 ### Upload → analysis → playback
 
@@ -312,13 +323,18 @@ sequenceDiagram
     SV-->>V: video
     V-->>U: 201 video object
     Note over SV,R: after the transaction commits
-    SV->>R: analyse_video.delay(id)
+    SV->>R: normalize_video_file.delay(id)
 
-    R->>W: analyse_video(id)
-    W->>DB: status = processing
-    W->>F: read file
-    W->>W: run_analysis(path) (TODO)
-    W->>DB: status = done + json_analysis (or failed)
+    R->>W: normalize_video_file(id), then analyse_video(id)
+    W->>DB: status = processing, analysis_runs + 1
+    W->>F: read file (ffprobe)
+    W->>W: normalize_video() into a temp file (always re-encode, once)
+    W->>F: save normalized MP4, delete the original (after commit)
+    W->>DB: path, file_size, duration, is_normalized (guarded UPDATE)
+    W->>W: extract_frame() + make_fitted_webp() (only if no thumbnail; a failure is just logged)
+    W->>F: save thumbnail
+    W->>W: run_analysis(path)
+    W->>DB: status = done + json_analysis (or failed + analysis_error_code)
 
     loop until done or failed
         U->>V: GET /api/videos/{id}/
@@ -341,6 +357,6 @@ router → VideoViewSet.create()
        → services.upload_video(owner=request.user, **validated_data)
              → Video.objects.create() → FileField.pre_save() → video_upload_path() → storage.save()
              → INSERT
-             → transaction.on_commit(start_analysis) → analyse_video.delay(video.pk)
+             → transaction.on_commit(start_analysis) → normalize_video_file.delay(video.pk)
        → Response(VideoSerializer(video).data, status=201)
 ```

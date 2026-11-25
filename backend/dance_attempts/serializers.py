@@ -1,3 +1,4 @@
+from django.urls import reverse
 from rest_framework import serializers
 
 from .models import DanceAttempt
@@ -15,7 +16,7 @@ class DanceAttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = DanceAttempt
         fields = (
-            'id', 'status', 'score', 
+            'id', 'status', 'analysis_error_code', 'score', 'reference_video_id',
             'score_diff_previous', 'score_diff_best', 
             'reference_title', 'created_at'
         )
@@ -24,14 +25,25 @@ class DanceAttemptSerializer(serializers.ModelSerializer):
 
 class DanceAttemptDetailSerializer(DanceAttemptSerializer):
     """
-    Extends the base serializer to include heavy fields like score_details.
+    Extends the base serializer to include heavy fields 
+    like score_details and the recording_url.
     """
+    # The owner-only /stream/ endpoint, not the file path: recordings are never served directly.
+    recording_url = serializers.SerializerMethodField()
     
     class Meta(DanceAttemptSerializer.Meta):
-        fields = DanceAttemptSerializer.Meta.fields + tuple([
+        fields = DanceAttemptSerializer.Meta.fields + (
+            'recording_url',
             'score_details'
-        ])
+        )
         read_only_fields = fields
+
+    def get_recording_url(self, attempt):
+        if not attempt.recording:
+            return None
+        url = reverse('dance-attempt-stream', args=[attempt.pk])
+        request = self.context.get('request')
+        return request.build_absolute_uri(url) if request else url
 
 
 class DanceAttemptUploadSerializer(serializers.Serializer):

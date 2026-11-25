@@ -7,8 +7,8 @@ Videos API. Routes (registered in zpi_app/urls.py):
     PATCH   /api/videos/{id}/                   partial_update (title, description, song fields, difficulty, visibility (publish / unpublish))
     DELETE  /api/videos/{id}/                   destroy
     GET     /api/videos/{id}/stream/            stream
-    GET     /api/videos/{id}/thumbnail/         thumbnail
     GET     /api/videos/{id}/analysis/          analysis (the whole json_analysis)
+    POST    /api/videos/{id}/reanalyze/         reanalyze (a failed video, while it has runs left)
 
 Library API (LibraryViewSet, at the bottom of this file):
 
@@ -61,15 +61,11 @@ from .services import VideoServiceError
 from core.streaming import range_file_response
 
 
-def not_implemented():
-    return Response({'detail': 'Not implemented yet.'}, status=status.HTTP_501_NOT_IMPLEMENTED)
-
-
 class VideoViewSet(viewsets.ViewSet):
     lookup_value_regex = r'\d+'
 
     def get_video(self, pk):
-        """One of my own videos (retrieve, PATCH, DELETE, thumbnail)."""
+        """One of my own videos (retrieve, PATCH, DELETE, reanalyze)."""
         # Filtering by owner means another user's video gives 404, not 403,
         # so the API doesn't reveal that the id exists.
         return get_object_or_404(Video.objects.owned_by(self.request.user), pk=pk)
@@ -97,21 +93,21 @@ class VideoViewSet(viewsets.ViewSet):
         # get_paginated_response wraps it as {count, next, previous, results}.
         paginator = VideoPagination()
         page = paginator.paginate_queryset(videos, request, view=self)
-        return paginator.get_paginated_response(VideoSerializer(page, many=True).data)
+        return paginator.get_paginated_response(VideoSerializer(page, many=True, context={'request': request}).data)
 
     def create(self, request):
         upload = VideoUploadSerializer(data=request.data)
         upload.is_valid(raise_exception=True)
         # owner comes from the session, never from the form (the serializer has no owner field).
         video = services.upload_video(owner=request.user, **upload.validated_data)
-        return Response(VideoSerializer(video).data, status=status.HTTP_201_CREATED)
+        return Response(VideoSerializer(video, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
-        return Response(VideoSerializer(self.get_video(pk)).data)
+        return Response(VideoSerializer(self.get_video(pk), context={'request': request}).data)
 
     def partial_update(self, request, pk=None):
         video = self.get_video(pk)
-        serializer = VideoSerializer(video, data=request.data, partial=True)
+        serializer = VideoSerializer(video, data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         # validated_data holds only writable fields that were sent (file_size etc. are dropped).
         try:
@@ -119,7 +115,7 @@ class VideoViewSet(viewsets.ViewSet):
         except VideoServiceError as error:
             return Response({'detail': str(error)}, status=status.HTTP_409_CONFLICT)
 
-        return Response(VideoSerializer(video).data)
+        return Response(VideoSerializer(video, context={'request': request}).data)
 
     def destroy(self, request, pk=None):
         services.delete_video(video=self.get_video(pk))
@@ -147,11 +143,15 @@ class VideoViewSet(viewsets.ViewSet):
             filename=f'{video.title}.{extension}',
         )
 
-    @action(detail=True)
-    def thumbnail(self, request, pk=None):
-        self.get_video(pk)
-        # TODO: needs a thumbnail generated during analysis (not in the VIDEO table yet).
-        return not_implemented()
+    @action(detail=True, methods=['post'])
+    def reanalyze(self, request, pk=None):
+        """Run the analysis again after it failed. 202: the work happens in the worker; poll retrieve."""
+        video = self.get_video(pk)
+        try:
+            video = services.reanalyze_video(video=video)
+        except VideoServiceError as error:      # not failed, or no runs left
+            return Response({'detail': str(error)}, status=status.HTTP_409_CONFLICT)
+        return Response(VideoSerializer(video, context={'request': request}).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True)
     def analysis(self, request, pk=None):

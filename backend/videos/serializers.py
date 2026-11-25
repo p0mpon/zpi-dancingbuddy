@@ -21,20 +21,25 @@ class VideoSerializer(serializers.ModelSerializer):
     """A video as returned by the API. PATCH may change title, description, song_author, song_title, difficulty and visibility.
 
     Not exposed: owner (always the logged-in user), path_to_resource (served by
-    /stream/) and json_analysis (too large for the list; served by /analysis/).
+    /stream/) and json_analysis (too large for the list; served by /analysis/). Also not exposed:
+    analysis_runs and is_normalized (internal bookkeeping of the analysis).
     """
+
+    # Same as in LibraryVideoSerializer: the stored path as a URL, or null until it is generated.
+    thumbnail_url = serializers.ImageField(source='thumbnail', read_only=True)
 
     class Meta:
         model = Video
         fields = [
             'id', 'title', 'description',
             'song_author', 'song_title', 'difficulty',  # editable
-            'file_size', 'duration_seconds', 'analysis_status',  # facts / set by the system
+            'file_size', 'duration_seconds', 'thumbnail_url',   # facts / set by the system
+            'analysis_status', 'analysis_error_code',
             'visibility', 'published_at', 'likes_count',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'file_size', 'duration_seconds', 'analysis_status',
+            'file_size', 'duration_seconds', 'analysis_status', 'analysis_error_code',
             'published_at', 'likes_count',
         ]
 

@@ -67,3 +67,14 @@ def make_square_webp(file, *, size, name, quality=DEFAULT_WEBP_QUALITY):
     except _PILLOW_ERRORS as error:
         raise ImageProcessingError('Image could not be processed.') from error
     return save_webp(image, name=name, quality=quality, icc_profile=icc_profile)
+
+
+def make_fitted_webp(file, *, max_side, name, quality=DEFAULT_WEBP_QUALITY):
+    """Shrink so the longest side is at most max_side (shape kept, never enlarged), save as WebP."""
+    image, icc_profile = load_image(file)
+    try:
+        # thumbnail() resizes in place, keeps the aspect ratio and only ever makes the image smaller.
+        image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+    except _PILLOW_ERRORS as error:
+        raise ImageProcessingError('Image could not be processed.') from error
+    return save_webp(image, name=name, quality=quality, icc_profile=icc_profile)

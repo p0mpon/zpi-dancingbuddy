@@ -6,7 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 from PIL import Image
 
-from core.images import ImageProcessingError, make_square_webp
+from core.images import ImageProcessingError, make_fitted_webp, make_square_webp
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -118,3 +118,28 @@ class MakeSquareWebpTests(ImageTestCase):
         broken = SimpleUploadedFile('in.png', data[:len(data) // 2])
         with self.assertRaises(ImageProcessingError):
             make_square_webp(broken, size=64, name='x.webp')
+
+
+class MakeFittedWebpTests(ImageTestCase):
+    def fitted(self, size):
+        return open_result(make_fitted_webp(upload(Image.new('RGB', size, RED)), max_side=720, name='x.webp'))
+
+    def test_landscape_is_scaled_to_720_wide(self):
+        image = self.fitted((1920, 1080))
+        self.assertEqual(image.format, 'WEBP')
+        self.assertEqual(image.size, (720, 405))
+
+    def test_portrait_is_scaled_to_720_tall(self):
+        self.assertEqual(self.fitted((1080, 1920)).size, (405, 720))
+
+    def test_small_image_is_not_upscaled(self):
+        self.assertEqual(self.fitted((300, 200)).size, (300, 200))
+
+    def test_name_is_kept(self):
+        result = make_fitted_webp(upload(Image.new('RGB', (40, 30), RED)), max_side=720, name='thumb.webp')
+        self.assertEqual(result.name, 'thumb.webp')
+
+    def test_broken_file_raises(self):
+        data = upload(Image.new('RGB', (200, 200), RED)).read()
+        with self.assertRaises(ImageProcessingError):
+            make_fitted_webp(SimpleUploadedFile('in.png', data[:len(data) // 2]), max_side=720, name='x.webp')

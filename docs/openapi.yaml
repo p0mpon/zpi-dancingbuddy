@@ -24,8 +24,8 @@ info:
 
     ## Video processing
     Uploaded files (`mp4`, `mov`, `webm`, max 500 MB) are **normalized** on the server to H.264/AAC MP4,
-    constant 30 fps, max 1080p, and then analysed in the background (D3.4). Normalization and thumbnail
-    generation are separate backend tasks; the API only exposes their result (`analysis_status`, `thumbnail_url`).
+    constant 30 fps, short side at most 1080 px, and then analysed in the background (D3.4). The same worker run
+    normalizes the file, makes the thumbnail (D3.5) and analyses it; a failed run gives `analysis_error_code` (D3.8).
 
 servers:
   - url: /
@@ -410,7 +410,7 @@ paths:
       tags: [Videos]
       summary: Upload a video
       description: |
-        Uploads a video (`mp4`, `mov` or `webm`, max 500 MB). The server normalizes it to MP4 30 fps ≤1080p
+        Uploads a video (`mp4`, `mov` or `webm`, max 500 MB). The server normalizes it to MP4 (H.264/AAC, 30 fps, short side ≤1080 px)
         and queues the analysis (D3.4). The video starts private with `analysis_status: pending`;
         poll `GET /api/videos/{video_id}/` until it is `done` or `failed`.
       security:
@@ -530,7 +530,7 @@ paths:
       tags: [Videos]
       summary: Stream a video
       description: |
-        The normalized MP4 file, for `<video src>` (D3.4). Owner or public video (D4.4).
+        The normalized MP4 file (H.264/AAC, 30 fps, short side ≤ 1080 px), for `<video src>` (D3.4). Owner or public video (D4.4).
         Supports HTTP range requests for seeking. `download=1` sends it as an attachment named `<title>.mp4`.
 
         Works without logging in for a public video (D7.6); a private video is then 404.
@@ -627,7 +627,9 @@ paths:
       operationId: reanalyzeVideo
       tags: [Videos]
       summary: Re-run a failed analysis
-      description: Owner only. Allowed only when `analysis_status` is `failed` (D3.7).
+      description: |
+        Owner only. Allowed only when `analysis_status` is `failed` **and** the video has analysis runs left
+        (at most 5 runs in total, automatic retries included), else 409 (D3.7).
       security:
         - cookieAuth: []
           csrfHeader: []
@@ -934,7 +936,9 @@ paths:
       operationId: reanalyzeDanceAttempt
       tags: [Dance Attempts]
       summary: Re-run a failed attempt analysis
-      description: Allowed only when `status` is `failed` (D3.7).
+      description: |
+        Allowed only when `status` is `failed` **and** the attempt has analysis runs left
+        (at most 5 runs in total, automatic retries included), else 409 (D3.7).
       security:
         - cookieAuth: []
           csrfHeader: []
@@ -951,7 +955,45 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/NotFailed'
-  
+
+  /api/dance-attempts/{attempt_id}/stream/:
+    parameters:
+      - $ref: '#/components/parameters/attemptId'
+    get:
+      operationId: streamDanceAttemptRecording
+      tags: [Dance Attempts]
+      summary: Stream my recording
+      description: |
+        The recording file (the normalized MP4 once `is_normalized`; recordings of attempts that are
+        not normalized yet or failed to normalize are the original upload). Owner only: someone else's
+        attempt is 404 (D6.7). Supports HTTP range requests for seeking; `download=1` sends it as an attachment.
+        Recordings are never served by a plain file route; `recording_url` points here.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: download
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['1']
+      responses:
+        '200':
+          description: The whole file.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: The requested byte range.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '416':
+          description: The range starts past the end of the file.
+
   /api/dance-attempts/{attempt_id}/status/:
     parameters:
       - $ref: '#/components/parameters/attemptId'
@@ -1068,6 +1110,22 @@ components:
       type: string
       description: '`failed` also covers a failed normalization of the file.'
       enum: [pending, processing, done, failed]
+    AnalysisErrorCode:
+      type: integer
+      nullable: true
+      enum: [1, 2, 3, 4, 5, 99]
+      description: |
+        Why the last analysis run failed (D3.8). Null unless `analysis_status` / `status` is `failed`.
+        The frontend maps the number to a text.
+
+        | Code | Name | Meaning | Retried automatically |
+        |---|---|---|---|
+        | 1 | FILE_MISSING | the file isn't on disk | no |
+        | 2 | UNREADABLE | the file can't be read, or has no video stream | no |
+        | 3 | NORMALIZATION_FAILED | ffmpeg exited with an error | no |
+        | 4 | NORMALIZATION_TIMEOUT | ffmpeg took longer than the limit | yes |
+        | 5 | ANALYSIS_FAILED | the analysis / scoring raised | no |
+        | 99 | UNKNOWN | anything else | yes |
     Visibility:
       type: string
       enum: [private, public]
@@ -1268,7 +1326,7 @@ components:
           type: string
           format: uri
           nullable: true
-          description: Null until a thumbnail is generated (separate backend task); show a placeholder.
+          description: Null until the thumbnail is generated (by the analysis run, D3.5) or if that failed; show a placeholder. WebP, longest side at most 720 px.
         visibility:
           allOf:
             - $ref: '#/components/schemas/Visibility'
@@ -1312,13 +1370,15 @@ components:
       allOf:
         - $ref: '#/components/schemas/PublicVideo'
         - type: object
-          required: [file_size, analysis_status, updated_at]
+          required: [file_size, analysis_status, analysis_error_code, updated_at]
           properties:
             file_size:
               type: number
               description: Size of the stored (normalized) file in bytes.
             analysis_status:
               $ref: '#/components/schemas/AnalysisStatus'
+            analysis_error_code:
+              $ref: '#/components/schemas/AnalysisErrorCode'
             updated_at:
               type: string
               format: date-time
@@ -1397,6 +1457,8 @@ components:
         - score
         - score_diff_previous
         - score_diff_best
+        - analysis_error_code
+        - reference_video_id
         - reference_title
         - created_at
       properties:
@@ -1405,6 +1467,8 @@ components:
           readOnly: true
         status:
           $ref: '#/components/schemas/AttemptStatus'
+        analysis_error_code:
+          $ref: '#/components/schemas/AnalysisErrorCode'
         score:
           type: integer
           minimum: 0
@@ -1419,6 +1483,13 @@ components:
           type: integer
           nullable: true
           description: Score minus my best earlier score on the same video. Null for the first attempt or while not done.
+        reference_video_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: |
+            The video this attempt was made on (D7.2); play it with `GET /api/videos/{id}/stream/`.
+            Null after the video is deleted (`reference_title` stays).
         reference_title:
           type: string
           description: Title of the video at the time of the attempt; kept after the video is deleted.
@@ -1429,16 +1500,12 @@ components:
       allOf:
         - $ref: '#/components/schemas/DanceAttempt'
         - type: object
-          required: [user_recording_url, reference_video_url, score_details]
+          required: [user_recording_url, score_details]
           properties:
             user_recording_url:
               type: string
               format: uri
-              description: The url for the recording of the user.
-            reference_video_url:
-              type: string
-              format: uri
-              description: The url for the reference video.
+              description: Owner-only `/stream/` endpoint of the recording (null if the attempt has no recording).
             score_details:
               type: object
               nullable: true
@@ -1559,7 +1626,7 @@ components:
           example:
             detail: Password is incorrect.
     NotFailed:
-      description: Only a failed analysis can be re-run.
+      description: Only a failed analysis can be re-run, and only while it has analysis runs left (D3.7).
       content:
         application/json:
           schema:

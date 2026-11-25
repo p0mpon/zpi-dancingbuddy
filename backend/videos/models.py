@@ -1,19 +1,27 @@
 import uuid
+from pathlib import PurePosixPath
 
 from django.conf import settings
 from django.db import models
 
 
 
+# No user id in any path: the files say nothing about whose they are (who owns what is only in the DB).
+
 def video_thumbnail_upload_path(video, filename):
-    """'thumbnails/videos/user_1/<random>.jpg', relative to MEDIA_ROOT."""
+    """'thumbnails/videos/<random>.webp', relative to MEDIA_ROOT."""
     extension = filename.rsplit('.', 1)[-1].lower()
-    return f'thumbnails/videos/user_{video.owner_id}/{uuid.uuid4().hex}.{extension}'
+    return f'thumbnails/videos/{uuid.uuid4().hex}.{extension}'
 
 def video_upload_path(video, filename):
-    """Where the uploaded file is stored, relative to MEDIA_ROOT: 'videos/user_1/<random>.mp4'."""
+    """Where the uploaded (raw) file is stored, relative to MEDIA_ROOT: 'videos/raw/<random>.<ext>'."""
     extension = filename.rsplit('.', 1)[-1].lower()
-    return f'videos/user_{video.owner_id}/{uuid.uuid4().hex}.{extension}'
+    return f'videos/raw/{uuid.uuid4().hex}.{extension}'
+
+def normalized_video_path(raw_name):
+    """Where the normalized copy goes, with the same name plus '_normalized':
+    'videos/raw/abc.mov' -> 'videos/normalized/abc_normalized.mp4'."""
+    return f'videos/normalized/{PurePosixPath(raw_name).stem}_normalized.mp4'
 
 class Visibility(models.TextChoices):
     PRIVATE = 'private', 'Private'      # only the owner sees it (default)
@@ -30,6 +38,23 @@ class AnalysisStatus(models.TextChoices):
     PROCESSING = 'processing', 'Processing'         # a Celery worker is analyzing it
     DONE = 'done', 'Done'                           # json_analysis is filled
     FAILED = 'failed', 'Failed'                     # analysis crashed; can be re-run
+
+
+# The three below are used by dance_attempts too (it already imports AnalysisStatus from here).
+# What each code means and which are retried: docs/api-decisions.md D3.8.
+class AnalysisError(models.IntegerChoices):
+    FILE_MISSING = 1, 'File missing'
+    UNREADABLE = 2, 'Unreadable video'
+    NORMALIZATION_FAILED = 3, 'Normalization failed'
+    NORMALIZATION_TIMEOUT = 4, 'Normalization timed out'
+    ANALYSIS_FAILED = 5, 'Analysis failed'
+    UNKNOWN = 99, 'Unknown error'
+
+
+MAX_ANALYSIS_RUNS = 5   # one upload + at most 4 more runs (automatic retries and reanalyze together)
+# Normalization is retried automatically only after a timeout (a busy server) or an unexpected error;
+# each try counts as a run. Short waits keep the status honest: no long stretch of "processing" or "pending".
+NORMALIZE_RETRY_DELAYS_SECONDS = (10, 30, 60, 120)   # wait after try 1, 2, 3, 4 (5 runs in total)
 
 
 class VideoQuerySet(models.QuerySet):
@@ -83,6 +108,14 @@ class Video(models.Model):
         choices=AnalysisStatus,
         default=AnalysisStatus.PENDING,
     )
+    # Set when the analysis fails, cleared when a new run starts. The API returns the number.
+    analysis_error_code = models.PositiveSmallIntegerField(
+        choices=AnalysisError.choices,
+        null=True,
+        blank=True,
+    )
+    analysis_runs = models.PositiveSmallIntegerField(default=0)     # +1 at the start of every run; not in the API
+    is_normalized = models.BooleanField(default=False)          # True once the file is the normalized MP4
     visibility = models.CharField(                              # string visibility
         max_length=20,
         choices=Visibility,
@@ -121,6 +154,17 @@ class Video(models.Model):
             models.CheckConstraint(     # statuses
                 condition=models.Q(analysis_status__in=AnalysisStatus.values),
                 name='video_analysis_status_valid',
+            ),
+            models.CheckConstraint(     # NULL passes automatically
+                condition=models.Q(analysis_error_code__in=AnalysisError.values),
+                name='video_analysis_error_code_valid',
+            ),
+            models.CheckConstraint(     # a code only on a failed row (one direction: old failed rows have none)
+                condition=(
+                        models.Q(analysis_error_code__isnull=True)
+                        | models.Q(analysis_status=AnalysisStatus.FAILED)
+                ),
+                name='video_analysis_error_code_only_when_failed',
             ),
             models.CheckConstraint(
                 condition=models.Q(visibility__in=Visibility.values),
