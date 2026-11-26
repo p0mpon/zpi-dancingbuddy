@@ -5,7 +5,7 @@ import {DIFFICULTY_OPTIONS} from "../../../../config/difficulty";
 import {deleteVideo, editVideo, privateVideo, publishVideo} from "../../../../api/calls";
 
 export default function EditorTab() {
-    const {currentVideo, setCurrentVideo, refreshVideo} = useVideo();
+    const {currentVideo, setCurrentVideo, notifyVideoDeleted, onCloseModal, refreshVideo} = useVideo();
 
     const [draftVideo, setDraftVideo] = useState(() =>
         currentVideo ? structuredClone(currentVideo) : null
@@ -108,7 +108,8 @@ export default function EditorTab() {
 
             setPendingAction(null);
             setCurrentVideo(null);
-            window.location.reload();
+            notifyVideoDeleted?.(deletedId);
+            onCloseModal();
         } catch (err) {
             setErrorMessage(
                 err?.response?.data?.message ||
@@ -122,6 +123,7 @@ export default function EditorTab() {
             setIsSaving(false);
         }
     };
+    
 
     const handleConfirmAction = async () => {
         if (!pendingAction) return;

@@ -105,6 +105,24 @@ export default function VideoList({mode}) {
         setSelectedVideo(null);
     };
 
+    const handleVideoUpdated = useCallback((updatedVideo) => {
+        setVideos((prev) =>
+            prev.map((v) => (v.id === updatedVideo.id ? { ...v, ...updatedVideo } : v))
+        );
+        setSelectedVideo((prev) =>
+            prev && prev.id === updatedVideo.id ? { ...prev, ...updatedVideo } : prev
+        );
+    }, []);
+
+    const handleVideoDeleted = useCallback((videoId) => {
+        setVideos((prev) => prev.filter((v) => v.id !== videoId));
+        setTotalCount((prev) => Math.max(0, prev - 1));
+        setSelectedVideo((prev) => (prev && prev.id === videoId ? null : prev));
+        if (window.location.hash === `#preview-${videoId}`) {
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+    }, []);
+    
     const switchToVideo = () => {
         navigate('/video/' + selectedVideo.id, {
             state: {
@@ -144,7 +162,7 @@ export default function VideoList({mode}) {
                     <Row xs={1} md={2} lg={3} className="g-4">
                         {videos.map((video) => (
                             <Col>
-                                <VideoCard key={video.id} mode={mode} video={video} showPreview={showPreview}/>
+                                <VideoCard key={video.id} mode={mode} video={video} showPreview={showPreview} onVideoUpdated={handleVideoUpdated} />
                             </Col>
                         ))}
                     </Row>
@@ -163,6 +181,8 @@ export default function VideoList({mode}) {
                     previewVideo={selectedVideo}
                     onHide={closePreview}
                     switchToVideoView={switchToVideo}
+                    onVideoUpdated={handleVideoUpdated}
+                    onVideoDelete={handleVideoDeleted}
                 />
             )}
         </>
