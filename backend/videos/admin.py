@@ -9,4 +9,4 @@ class VideoAdmin(admin.ModelAdmin):
     list_filter = ('analysis_status',)
     search_fields = ('title',)
     # Written by the analysis, not by hand.
-    readonly_fields = ('json_analysis',)
+    readonly_fields = ('json_analysis', 'analysis_error_code', 'analysis_runs', 'is_normalized')

@@ -62,7 +62,7 @@ class DanceAttemptServiceTests(TestCase):
         # WHEN we call create_attempt
         with patch(
             'dance_attempts.services.start_attempt_analysis'
-        ) as start_analysis:
+        ) as start_analysis, patch('dance_attempts.services.start_attempt_normalization') as start_normalization:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
                 attempt = create_attempt(
                     user=self.user,
@@ -75,12 +75,13 @@ class DanceAttemptServiceTests(TestCase):
         self.assertEqual(attempt.reference_video, self.public_video)
         self.assertEqual(attempt.reference_title, self.public_video.title)
         self.assertEqual(attempt.status, AnalysisStatus.PENDING)
-        self.assertEqual(attempt.recording.name.split('/')[1], f'user_{self.user.id}')
+        self.assertTrue(attempt.recording.name.startswith('dance_attempt/raw/'))
         # AND the recording file should exist
         self.assertTrue(os.path.exists(attempt.recording.path))
-        # AND analysis should be queued
-        self.assertEqual(len(callbacks), 1)
+        # AND scoring and normalization of the recording should both be queued
+        self.assertEqual(len(callbacks), 2)
         start_analysis.assert_called_once_with(attempt=attempt)
+        start_normalization.assert_called_once_with(attempt=attempt)
 
     def test_create_attempt_rejects_another_users_private_video(self):
         # GIVEN another user and a private video owned by the first user

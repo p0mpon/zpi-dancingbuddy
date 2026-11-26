@@ -50,6 +50,7 @@ Last updated: 2026-11-16 (DAN-141 notes: D0.1, D4.2, D4.3, D4.4, D5.2, D7.3; D7.
 | D3.5 | Thumbnail | 🗂️ | 🟡 ⚠️ |
 | D3.6 | Replacing the file | 🗂️ | 🔴 ⚠️ |
 | D3.7 | Re-run failed analysis | ➕ | 🟢 |
+| D3.8 | Analysis error codes | ➕ | 🟢 |
 | D4.1 | Publish / unpublish | 🗂️ | 🟢 |
 | D4.2 | Library search and filters | 🆕 | 🟡 ⚠️ |
 | D4.3 | `times_played` | 🆕 | 🟡 ⚠️ |
@@ -238,6 +239,21 @@ removed via `DELETE /api/users/me/avatar/`.
 
 **Change:** ~~required, unlimited~~ → **nullable, max 5 MB, removable**.
 
+**Processing (DAN-172):** accepted input stays JPEG/PNG, max 5 MB; only what is *stored* changes.
+- Every uploaded avatar is turned upright by EXIF, centre-cropped to a square, resized to **512×512** and saved as
+  **WebP, quality 80**. The original is not kept. 512 covers the largest use today (96 px circle on 3× screens) and a
+  bigger profile page later; since originals are not kept, the size cannot be raised later.
+- EXIF is removed (GPS location, camera model, date). The ICC colour profile is kept.
+- Transparency is kept (RGBA); everything else becomes RGB. Animated PNG → first frame only.
+- Small images are upscaled, so clients always get the same size.
+- New limit: **max 50 megapixels** (width × height), checked before decoding → 400. A 5 MB single-colour PNG can be
+  400 MP ≈ 1.6 GB of RAM once decoded.
+- Admin uploads are not processed.
+- No backfill: existing avatars (dev data only) stay as they are.
+- `avatar_url` stays `null` when there is no avatar; the default image is the frontend's job.
+- The generic image code lives in `backend/core/images.py` (video thumbnails will reuse it); the avatar-specific
+  values and the call are in `UpdateProfileSerializer.validate_avatar`.
+
 ⚠️ The code field is named differently (D2.5).
 
 ### 🟢 D2.5 ➕ Avatar field name in code
@@ -285,15 +301,24 @@ updated_at` + `thumbnail_url` + `best_score` (D6.4).
 formats work. The real problems are browser webm (missing frame count), wrong timing for non-30 fps videos, and iPhone
 HEVC not playing in Chrome/Firefox.
 
-**Solution:** accept `mp4, mov, webm`, max 500 MB, for videos and attempt recordings. The server **normalizes** every
-upload to H.264/AAC MP4, constant 30 fps, **max 1080p** before the analysis. The stored file is always MP4.
-Normalization is a **separate task outside the API**; the spec only mentions it in descriptions (upload,
-`/stream/` serves `video/mp4` only, `analysis_status: failed` includes a failed normalization).
+**Solution (implemented in DAN-172, `core/ffmpeg.py`):** accept `mp4, mov, webm`, max 500 MB, for videos and attempt
+recordings. The worker **always re-encodes** every upload (even if it already looks right) as the first step of the
+analysis run; once done, `is_normalized` stays true and later runs skip it. Output:
+- MP4, H.264 (`libx264`, preset `veryfast`, CRF 23, `yuv420p`) + AAC 128 kbit/s, 44.1 kHz, stereo;
+- constant 30 fps;
+- short side at most 1080 px, aspect kept, never upscaled, both sides even (720×1280 stays, 2160×3840 → 1080×1920);
+- a keyframe every 0.5 s (fixed GOP of 15 frames): fast seeking and frame stepping in the player;
+- `+faststart`: the index is at the start of the file, so playback starts before the whole file arrives;
+- phone rotation applied, **all metadata dropped** (phone videos can contain the GPS location);
+- no audio track → a silent stereo track is added (the analysis may then find no beats; accepted for now);
+- only the first video and first audio stream are kept.
+The original file is deleted after the swap; the stored file is always the normalized MP4. Paths: raw uploads in `videos/raw/`, normalized copies in `videos/normalized/<name>_normalized.mp4`, thumbnails in `thumbnails/videos/`; no path contains a user id (who owns what is only in the DB). A failed normalization
+makes the run fail with error code 2, 3 or 4 (D3.8). The spec describes it in the upload and `/stream/` descriptions.
 
 **Change:** ~~MP4 only~~ → **mp4 / mov / webm + server-side normalization**.
 
-⚠️ Normalization isn't implemented yet.
-⚠️ Analysis bugs, unfixed: `video_analysis/initial_analysis.py:233` divides by the frame count (0 for browser webm →
+⚠️ Known limitation, accepted: HDR (iPhone HLG) comes out a bit washed out; there is no tone mapping.
+⚠️ Analysis bugs, unfixed (now hidden by the normalization, not fixed): `video_analysis/initial_analysis.py:233` divides by the frame count (0 for browser webm →
 ZeroDivisionError); `:210` labels 25/50 fps frames as 30 fps (≈20 % drift vs. the music). Normalization to 30 fps
 CFR hides both, but the code should still be fixed.
 
@@ -301,12 +326,18 @@ CFR hides both, but the code should still be fixed.
 **Point:** v2 has a `thumbnail` path; the spec has `thumbnailUrl` (required); the code has a `/thumbnail/` endpoint returning 501.
 
 **Solution:** `thumbnail_url` (nullable) in the my-video, library and `reference_video` DTOs; the frontend shows a placeholder
-while it's null. The `/thumbnail/` endpoint is removed. Generation is a separate task (mentioned in the field description).
+while it's null. The `/thumbnail/` endpoint is removed.
+
+**Implemented (DAN-172):** the worker takes a frame from the **middle of the normalized video** (`duration / 2`, at 1 s if
+the duration is unknown), keeps the shape, longest side **720 px** (never upscaled), saves it as WebP. It is made only
+when the video has no thumbnail yet (reanalyze doesn't replace it). **A thumbnail failure is not an analysis failure:**
+it is logged, `thumbnail` stays null and the analysis continues.
 
 **Change:** ~~`/thumbnail/` endpoint~~, ~~required~~ → **nullable `thumbnail_url` field**.
 
-⚠️ Still in code: the `thumbnail` action in `backend/videos/views.py` (501) and `video_thumbnail` in
-`frontend/src/api/endpoints.js`. `thumbnail` isn't in `VideoSerializer` yet. Generation isn't implemented.
+⚠️ Still in the frontend: `video_thumbnail` in `frontend/src/api/endpoints.js` (the backend route is gone).
+⚠️ In dev, `urls.py` serves only `avatars/` from `MEDIA_URL`; `thumbnail_url` of a video won't open in the browser until
+thumbnails are served too (production: a file server).
 
 ### 🔴 D3.6 🗂️ Replacing the video file
 **Point:** the spec (and the old code) let PATCH replace the file and re-run the analysis. That's risky for public videos with attempts and likes.
@@ -322,7 +353,38 @@ PATCH is JSON only.
 **Point:** v2 says a failed analysis "can be re-run", but there was no endpoint.
 
 **Solution:** `POST /api/videos/{id}/reanalyze/` and `POST /api/dance-attempts/{id}/reanalyze/`, owner only →
-202 with the DTO (`pending`); only when the status is `failed`, else 409.
+202 with the DTO (`pending`); only when the status is `failed`, else 409. **Both implemented** (video: DAN-172).
+
+**Run limit (DAN-172):** every run adds 1 to `analysis_runs` (video and attempt; not in the API), at most
+`MAX_ANALYSIS_RUNS = 5`. Reanalyze is allowed only when the status is `failed` **and** `analysis_runs < 5`, else **409**;
+it doesn't reset the counter. Normalization (video and attempt recording) is also retried automatically after a timeout or an
+unexpected error, with Celery's own retry and short waits of **10 s, 30 s, 60 s, 120 s** (each try is a run, so 5 runs in
+total). The status stays `processing` while it waits. After the last try the run ends as `failed` with that code.
+
+### 🟢 D3.8 ➕ Analysis error codes
+**Point:** `analysis_status: failed` didn't say why, so the frontend couldn't tell "try again" from "your file is broken".
+
+**Solution:** a failed run stores an integer `analysis_error_code` (my-video DTO and attempt DTOs, owner only; not in the
+library DTO). It is set when the status becomes `failed` and cleared when a new run starts or a reanalyze resets the row.
+DB constraint: `analysis_error_code IS NULL OR status = 'failed'` (one direction, so old failed rows need no backfill).
+The API returns the number; **the frontend maps it to text.**
+
+| Code | Name | Meaning | Retried automatically |
+|---|---|---|---|
+| 1 | `FILE_MISSING` | the file isn't on disk | no |
+| 2 | `UNREADABLE` | ffprobe can't read it / no video stream | no |
+| 3 | `NORMALIZATION_FAILED` | ffmpeg exited with an error | no |
+| 4 | `NORMALIZATION_TIMEOUT` | ffmpeg took longer than the limit (30 min) | **yes** |
+| 5 | `ANALYSIS_FAILED` | the analysis / scoring raised | no |
+| 99 | `UNKNOWN` | anything else | **yes** |
+
+Not in the API: `analysis_runs` and `is_normalized`.
+
+**Attempts differ:** scoring uses only the two JSONs, so scoring and recording normalization are **two independent
+tasks** that start together (D6.7). Only the scoring can set `analysis_error_code` on an attempt, and only code **5**.
+A failed normalization of a recording is just logged: the attempt keeps its score and the original file, and
+`is_normalized` stays false (a cleanup job comes later). Normalization retries a timeout or an unexpected error up to
+5 runs in total, after 10, 30, 60 and 120 s (shorter than for videos).
 
 ---
 
@@ -508,7 +570,8 @@ The frontend hides the "Dance" button until then.
 **Point:** v2 has `recording` ("null if not saved"). D6.2 dropped replay for now, so the question was whether the file is
 still needed after scoring.
 
-**Solution:** recordings are **always kept** (normalized MP4, D3.4). That leaves room for a replay feature later
+**Solution:** recordings are **always kept**, and normalized to the same MP4 as videos (D3.4; implemented in DAN-172, the
+original is deleted after the swap, in its own task next to the scoring, see D3.8; raw uploads live in `dance_attempt/raw/`, normalized copies in `dance_attempt/normalized/<name>_normalized.mp4`). Recordings are private: they are read only through `GET /api/dance-attempts/{id}/stream/` (owner only), never through a plain media route. That leaves room for a replay feature later
 (`recording_url` + a stream endpoint, added without breaking the contract) and lets reanalyze (D3.7) work.
 
 ⚠️ Storage grows with every attempt (up to 500 MB per upload before normalization). Watch the disk usage and plan a

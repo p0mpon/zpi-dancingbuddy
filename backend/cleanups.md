@@ -8,7 +8,7 @@ Small known issues, left for later.
 
 **Problem:** `Video.objects.create()` first writes the file (in `FileField.pre_save()`), then runs
 the INSERT. If the INSERT fails (DB down, constraint error, ...), the file stays in
-`media/videos/user_<id>/` with no row pointing to it.
+`media/videos/ (raw/ and normalized/)` with no row pointing to it.
 
 **Fix:** keep `FileField` (and `upload_to=video_upload_path`), but save in a `try` and delete
 the file if it was already written:

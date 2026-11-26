@@ -16,7 +16,8 @@ from dance_attempts.models import DanceAttempt
 
 from .models import AnalysisStatus, Difficulty, Video, Visibility
 from core.streaming import RangeNotSatisfiable, parse_range_header
-from .tasks import analyse_video
+from core.testing import make_clip
+from .tasks import normalize_video_file
 
 # Uploaded files go to a throw-away folder, removed after the test class runs.
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
@@ -40,6 +41,13 @@ def fake_frames(seconds, fps=30):
 
 
 def video_file(name='dance.mp4', content=b'fake video bytes'):
+    return SimpleUploadedFile(name, content, content_type='video/mp4')
+
+
+def real_video_file(name='dance.mp4', **options):
+    """A real tiny video (made by ffmpeg), for tests where the file is really read."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        content = make_clip(Path(temp_dir) / name, **options).read_bytes()
     return SimpleUploadedFile(name, content, content_type='video/mp4')
 
 
@@ -159,7 +167,7 @@ class VideoApiTests(APITestCase):
             {
                 'id', 'title', 'description',
                 'song_author', 'song_title', 'difficulty',
-                'file_size', 'duration_seconds', 'analysis_status',
+                'file_size', 'duration_seconds', 'thumbnail_url', 'analysis_status', 'analysis_error_code',
                 'visibility', 'published_at', 'likes_count',
                 'created_at', 'updated_at',
             },
@@ -190,7 +198,7 @@ class VideoApiTests(APITestCase):
         self.assertEqual(video.owner, self.dancer)
         self.assertEqual(video.file_size, len(b'fake video bytes'))
         self.assertEqual(video.analysis_status, AnalysisStatus.PENDING)
-        self.assertTrue(video.path_to_resource.name.startswith(f'videos/user_{self.dancer.pk}/'))
+        self.assertTrue(video.path_to_resource.name.startswith('videos/raw/'))
         self.assertTrue(Path(settings.MEDIA_ROOT, video.path_to_resource.name).is_file())
 
     def test_upload_queues_analysis_after_commit(self):
@@ -424,7 +432,7 @@ class VideoApiTests(APITestCase):
     def test_stream_is_the_only_video_route_open_without_login(self):
         public = self.others_public_video()
         self.client.force_authenticate(None)
-        for suffix in ['', 'analysis/', 'thumbnail/']:
+        for suffix in ['', 'analysis/', 'reanalyze/']:
             with self.subTest(suffix=suffix):
                 response = self.client.get(self.url(public, suffix))
                 self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -439,9 +447,9 @@ class VideoApiTests(APITestCase):
 
     # ==== OTHER ACTIONS
 
-    def test_thumbnail_not_implemented(self):
+    def test_thumbnail_route_is_gone(self):
         response = self.client.get(self.url(self.analysed, 'thumbnail/'))
-        self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     # ==== ANALYSIS
 
@@ -481,13 +489,13 @@ class AnalyseVideoTaskTests(TestCase):
     def setUp(self):
         self.dancer = get_user_model().objects.create_user(username='dancer', nickname='dancer', password='pass')
         self.video = Video.objects.create(
-            owner=self.dancer, title='Salsa', path_to_resource=video_file(), file_size=16.0,
+            owner=self.dancer, title='Salsa', path_to_resource=real_video_file(), file_size=16.0, is_normalized=True,
         )
 
     def test_success_saves_json_and_done(self):
         frames = fake_frames(seconds=1)
         with mock.patch('videos.tasks.run_analysis', return_value=frames) as run_analysis:
-            analyse_video(self.video.pk)
+            normalize_video_file.apply(args=[self.video.pk])
         run_analysis.assert_called_once_with(self.video.path_to_resource.path)
         self.video.refresh_from_db()
         self.assertEqual(self.video.analysis_status, AnalysisStatus.DONE)
@@ -501,7 +509,7 @@ class AnalyseVideoTaskTests(TestCase):
             return []
 
         with mock.patch('videos.tasks.run_analysis', side_effect=record_status):
-            analyse_video(self.video.pk)
+            normalize_video_file.apply(args=[self.video.pk])
         # Asserted here, not inside record_status: the task catches every exception from
         # run_analysis, so a failing assert in there would only mark the video 'failed'.
         self.assertEqual(statuses_seen, [AnalysisStatus.PROCESSING])
@@ -509,42 +517,23 @@ class AnalyseVideoTaskTests(TestCase):
     def test_error_marks_failed(self):
         with mock.patch('videos.tasks.run_analysis', side_effect=RuntimeError('boom')):
             with self.assertLogs('videos.tasks', level='ERROR'):
-                analyse_video(self.video.pk)
+                normalize_video_file.apply(args=[self.video.pk])
         self.video.refresh_from_db()
         self.assertEqual(self.video.analysis_status, AnalysisStatus.FAILED)
         self.assertIsNone(self.video.json_analysis)
 
-    def test_not_connected_yet_marks_failed(self):
-        with self.assertLogs('videos.tasks', level='ERROR'):
-            analyse_video(self.video.pk)
-        self.video.refresh_from_db()
-        self.assertEqual(self.video.analysis_status, AnalysisStatus.FAILED)
-
-    def test_result_dropped_if_file_replaced_meanwhile(self):
-        def replace_file(file_path):
-            # What a PATCH with a new file does while the worker is busy.
-            Video.objects.filter(pk=self.video.pk).update(
-                path_to_resource='videos/new.mp4', analysis_status=AnalysisStatus.PENDING,
-            )
-            return fake_frames(seconds=1)
-
-        with mock.patch('videos.tasks.run_analysis', side_effect=replace_file):
-            analyse_video(self.video.pk)
-        self.video.refresh_from_db()
-        self.assertEqual(self.video.analysis_status, AnalysisStatus.PENDING)
-        self.assertIsNone(self.video.json_analysis)
 
     def test_deleted_video_is_skipped(self):
         with mock.patch('videos.tasks.run_analysis') as run_analysis:
-            analyse_video(999999)
+            normalize_video_file.apply(args=[999999])
         run_analysis.assert_not_called()
 
     def test_upload_runs_the_task(self):
-        """Whole chain: POST -> on_commit -> start_analysis -> analyse_video.delay (eager) -> done."""
+        """Whole chain: POST -> on_commit -> start_analysis -> normalize_video_file.delay (eager) -> done."""
         self.client.force_login(self.dancer)
         with mock.patch('videos.tasks.run_analysis', return_value=fake_frames(seconds=1)):
             with self.captureOnCommitCallbacks(execute=True):
-                response = self.client.post('/api/videos/', {'title': 'New', 'file': video_file()})
+                response = self.client.post('/api/videos/', {'title': 'New', 'file': real_video_file()})
         video = Video.objects.get(pk=response.json()['id'])
         self.assertEqual(video.analysis_status, AnalysisStatus.DONE)
 

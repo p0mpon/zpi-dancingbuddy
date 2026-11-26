@@ -47,7 +47,7 @@ Endpoints, architecture and data-flow diagrams: [`videos/README.md`](videos/READ
 
 Video analysis runs in the `celery-worker` container, with Redis (`redis`) as the queue.
 `docker compose up` starts both. Uploading a video (or replacing its file via PATCH) queues
-`videos.tasks.analyse_video`; the worker sets `analysis_status` to `processing`, then `done` or `failed`.
+`videos.tasks.normalize_video_file` (then `analyse_video`); the worker sets `analysis_status` to `processing`, then `done` or `failed`.
 
 ```
 docker compose logs -f celery-worker     # watch tasks run

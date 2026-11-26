@@ -9,3 +9,6 @@ class AttemptNotFailedError(Exception):
 
 class VideoNotFoundError(Http404):
     """Raised when a video is not found or is not accessible."""
+
+class AnalysisRunLimitReached(Exception):
+    """Raised when trying to reanalyze an attempt that has already used all its analysis runs."""

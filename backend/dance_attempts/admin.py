@@ -7,4 +7,7 @@ class DanceAttemptAdmin(admin.ModelAdmin):
     list_filter = ('status',)
     search_fields = ('reference_title', 'user__nickname', 'user__username')
     
-    readonly_fields = ('score', 'status', 'json_analysis', 'score_details')
+    readonly_fields = (
+        'score', 'status', 'json_analysis', 'score_details',
+        'analysis_error_code', 'analysis_runs', 'is_normalized',
+    )

@@ -1,0 +1,18 @@
+$kind: http-request
+description: |-
+  Send only `bio`: **200**, and `avatar_url` is the same as after the upload.
+url: "{{base}}/users/me/"
+method: PATCH
+body:
+  type: formdata
+  content:
+    - type: text
+      key: bio
+      value: hello
+      description: "Optional, max 300 characters"
+      disabled: false
+auth:
+  type: inherit
+  credentials:
+    id: 6e56e4ef-2e8d-441b-9af5-ad4b8fbcbd6d
+order: 11000

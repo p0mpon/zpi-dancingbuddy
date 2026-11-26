@@ -135,6 +135,7 @@ def update_profile(*, user, **fields):
     """PATCH /api/users/me/: nickname, bio and / or avatar. Nothing sent = nothing changes.
 
     A new avatar replaces the old one; the old file is deleted after the commit.
+    The avatar arrives already processed (512x512 WebP, core.images via UpdateProfileSerializer).
     """
     if not fields:
         return user
