@@ -5,7 +5,7 @@ import {useVideo} from "../../../context/VideoContext";
 import {formatDate} from "../../../utils/date_format";
 
 export default function VideoPreviewModal({onHide, switchToVideoView, tabs}) {
-    const [activeTab, setActiveTab] = useState(tabs[0].key);
+    const [activeTab, setActiveTab] = useState(tabs[0].eventKey);
     const {currentVideo, attempts} = useVideo();
 
     const lastAttempt = attempts.length > 0 ? attempts[0] : null;

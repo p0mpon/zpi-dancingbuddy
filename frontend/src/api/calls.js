@@ -2,170 +2,6 @@ import {api} from "./axios_instances";
 import {API_ENDPOINTS} from "./endpoints";
 import {DANCE_ATTEMPT_PAGE_LIMIT, MAIN_PAGE_LIMIT} from "../config/pagination";
 
-export async function getAllVideos({searchQuery, difficulty, nextUrl}) {
-    try {
-        if (nextUrl) {
-            const response = await api.get(nextUrl)
-            return response.data;
-        }
-        const params = {};
-
-        params.limit = MAIN_PAGE_LIMIT;
-        if (searchQuery) params.search = searchQuery;
-        if (difficulty) params.difficulty = difficulty;
-
-        const response = await api.get(API_ENDPOINTS.videos, {params});
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function uploadNewVideo(video) {
-    try {
-        const response = await api.post(API_ENDPOINTS.my_videos, video)
-        return response.data;
-    } catch (e) {
-        console.error("error details:", e.response?.data);
-        throw e;
-    }
-}
-
-export async function getVideoDetails(id) {
-    try {
-        const response = await api.get(API_ENDPOINTS.video_details(id))
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function getFullVideo(id) {
-    try {
-        const response = await api.get(API_ENDPOINTS.video_details(id))
-        const stream_response = await api.get(API_ENDPOINTS.video_stream(id), {
-            responseType: 'blob'
-        });
-
-        const blob = URL.createObjectURL(stream_response.data);
-
-        return {
-            ...response.data,
-            file: blob
-        };
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function getVideoAnalysis(id) {
-    try {
-        const response = await api.get(API_ENDPOINTS.video_analysis(id));
-        return response.data;
-    } catch (e) {
-        console.error("Failed to fetch reference analysis:", e);
-        throw e;
-    }
-}
-
-export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
-    try {
-        const formData = new FormData();
-        formData.append('reference_video_id', referenceVideoId);
-        formData.append('recording', videoBlob, 'practice_attempt.webm');
-        formData.append('mediapipe_data', JSON.stringify(frames));
-
-        const response = await api.post(API_ENDPOINTS.dance_attempts, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data'
-            }
-        });
-        return response.data;
-    } catch (e) {
-        console.error("error details:", e.response?.data);
-        throw e;
-    }
-}
-
-export async function getDanceAttemptStatus(taskId) {
-    try {
-        const response = await api.get(API_ENDPOINTS.dance_attempt_status(taskId));
-        return response.data;
-    } catch (e) {
-        console.error("Failed to fetch score status:", e);
-        throw e;
-    }
-}
-
-export async function editVideo(id, videoData) {
-    try {
-        const response = await api.patch(API_ENDPOINTS.video_details(id), videoData)
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function publishVideo(id) {
-    try {
-        const response = await api.patch(API_ENDPOINTS.video_details(id), {
-            visibility: 'public'
-        });
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function privateVideo(id) {
-    try {
-        const response = await api.patch(API_ENDPOINTS.video_details(id), {
-            visibility: 'private'
-        });
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function deleteVideo(id) {
-    try {
-        const response = await api.delete(API_ENDPOINTS.video_details(id))
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
-export async function getMyVideos({searchQuery, difficulty, analysisStatus, visibility, nextUrl}) {
-    try {
-        if (nextUrl) {
-            const response = await api.get(nextUrl)
-            return response.data;
-        }
-        const params = {};
-
-        params.limit = MAIN_PAGE_LIMIT;
-        if (searchQuery) params.search = searchQuery;
-        if (difficulty) params.difficulty = difficulty;
-        if (analysisStatus) params.analysis_status = analysisStatus;
-        if (visibility) params.visibility = visibility;
-
-        const response = await api.get(API_ENDPOINTS.my_videos, {params});
-        return response.data;
-    } catch (e) {
-        console.error(e);
-        throw e;
-    }
-}
-
 //--- auth endpoints ---
 
 export async function getCSRFToken(){
@@ -202,19 +38,11 @@ export async function logoutUser() {
     }
 }
 
-export async function getUser(nickname) {
-    try {
-        const response = await api.get(API_ENDPOINTS.public_profile(nickname))
-        return response.data;
-    } catch (e) {
-        if (e.response?.status === 404) {
-            return null;
-        }
+export async function resetPassword(userData) {
 
-        console.error(`Unexpected error fetching user "${nickname}":`, e);
-        throw e;
-    }
 }
+
+//--- user endpoints ---
 
 export async function getCurrentUser() {
     try {
@@ -229,6 +57,258 @@ export async function getCurrentUser() {
         return null;
     }
 }
+
+export async function updateProfile(userData) {
+
+}
+
+export async function deleteProfile(userData) {
+
+}
+
+export async function changeUsername(userData) {
+
+}
+
+export async function changePassword(userData) {
+
+}
+
+export async function generateRecoveryCode(userData){
+
+}
+
+export async function removeAvatar() {
+
+}
+
+export async function getUser(nickname) {
+    try {
+        const response = await api.get(API_ENDPOINTS.public_profile(nickname))
+        return response.data;
+    } catch (e) {
+        if (e.response?.status === 404) {
+            return null;
+        }
+
+        console.error(`Unexpected error fetching user "${nickname}":`, e);
+        throw e;
+    }
+}
+
+//--- my video endpoints ---
+
+export async function getMyVideos({searchQuery, difficulty, analysisStatus, visibility, nextUrl}) {
+    try {
+        if (nextUrl) {
+            const response = await api.get(nextUrl)
+            return response.data;
+        }
+        const params = {};
+
+        params.limit = MAIN_PAGE_LIMIT;
+        if (searchQuery) params.search = searchQuery;
+        if (difficulty) params.difficulty = difficulty;
+        if (analysisStatus) params.analysis_status = analysisStatus;
+        if (visibility) params.visibility = visibility;
+
+        const response = await api.get(API_ENDPOINTS.my_videos, {params});
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function uploadNewVideo(video) {
+    try {
+        const response = await api.post(API_ENDPOINTS.my_videos, video)
+        return response.data;
+    } catch (e) {
+        console.error("error details:", e.response?.data);
+        throw e;
+    }
+}
+
+export async function getMyVideoDetails(id) {
+    try {
+        const response = await api.get(API_ENDPOINTS.my_video_details(id))
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getMyFullVideo(id) {
+    try {
+        const response = await api.get(API_ENDPOINTS.my_video_details(id))
+        const stream_response = await api.get(API_ENDPOINTS.video_stream(id), {
+            responseType: 'blob'
+        });
+
+        const blob = URL.createObjectURL(stream_response.data);
+
+        return {
+            ...response.data,
+            file: blob
+        };
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function editVideo(id, videoData) {
+    try {
+        const response = await api.patch(API_ENDPOINTS.my_video_details(id), videoData)
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function publishVideo(id) {
+    try {
+        const response = await api.patch(API_ENDPOINTS.my_video_details(id), {
+            visibility: 'public'
+        });
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function privateVideo(id) {
+    try {
+        const response = await api.patch(API_ENDPOINTS.my_video_details(id), {
+            visibility: 'private'
+        });
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function deleteVideo(id) {
+    try {
+        const response = await api.delete(API_ENDPOINTS.my_video_details(id))
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getVideoAnalysis(id) {
+    try {
+        const response = await api.get(API_ENDPOINTS.video_analysis(id));
+        return response.data;
+    } catch (e) {
+        console.error("Failed to fetch reference analysis:", e);
+        throw e;
+    }
+}
+
+export async function rerunAnalysis(video_id) {
+
+}
+
+//--- library endpoints ---
+
+export async function getAllVideos({searchQuery, difficulty, nextUrl}) {
+    try {
+        if (nextUrl) {
+            const response = await api.get(nextUrl)
+            return response.data;
+        }
+        const params = {};
+
+        params.limit = MAIN_PAGE_LIMIT;
+        if (searchQuery) params.search = searchQuery;
+        if (difficulty) params.difficulty = difficulty;
+
+        const response = await api.get(API_ENDPOINTS.videos, {params});
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getLikedVideos({searchQuery, difficulty, nextUrl}) {
+    try {
+        if (nextUrl) {
+            const response = await api.get(nextUrl)
+            return response.data;
+        }
+        const params = {};
+
+        params.limit = MAIN_PAGE_LIMIT;
+        if (searchQuery) params.search = searchQuery;
+        if (difficulty) params.difficulty = difficulty;
+
+        const response = await api.get(API_ENDPOINTS.liked_videos, {params});
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getLibraryVideoDetails(id) {
+    try {
+        const response = await api.get(API_ENDPOINTS.video_details(id))
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function getFullLibraryVideo(id){
+    try {
+        const response = await api.get(API_ENDPOINTS.video_details(id))
+        const stream_response = await api.get(API_ENDPOINTS.video_stream(id), {
+            responseType: 'blob'
+        });
+
+        const blob = URL.createObjectURL(stream_response.data);
+
+        return {
+            ...response.data,
+            file: blob
+        };
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function LikeVideo(id) {
+    try {
+        const response = await api.put(API_ENDPOINTS.like_video(id))
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+export async function UnlikeVideo(id) {
+    try {
+        const response = await api.delete(API_ENDPOINTS.like_video(id))
+        return response.data;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+//--- dance attempt endpoints ---
 
 export async function getDanceAttemptsForVideo(videoId, nextUrl) {
     if(!videoId && !nextUrl) {
@@ -251,6 +331,37 @@ export async function getDanceAttemptsForVideo(videoId, nextUrl) {
         throw e;
     }
 }
+
+export async function postDanceAttempt(referenceVideoId, frames, videoBlob) {
+    try {
+        const formData = new FormData();
+        formData.append('reference_video_id', referenceVideoId);
+        formData.append('recording', videoBlob, 'practice_attempt.webm');
+        formData.append('mediapipe_data', JSON.stringify(frames));
+
+        const response = await api.post(API_ENDPOINTS.dance_attempts, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        return response.data;
+    } catch (e) {
+        console.error("error details:", e.response?.data);
+        throw e;
+    }
+}
+
+export async function getDanceAttemptStatus(taskId) {
+    try {
+        const response = await api.get(API_ENDPOINTS.dance_attempt_status(taskId));
+        return response.data;
+    } catch (e) {
+        console.error("Failed to fetch score status:", e);
+        throw e;
+    }
+}
+
+
 
 export async function getPastDanceAttempt(attemptId){
     try {
