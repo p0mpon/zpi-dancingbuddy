@@ -2,10 +2,15 @@ import VideoPreviewModal from "./VideoPreviewModal";
 import {PREVIEW_MODALS_CONFIGS} from "../../../config/preview_config";
 import {VideoProvider} from "../../../context/VideoContext";
 
-export default function LibraryPreviewModal({previewVideo, onHide, switchToVideoView}) {
+export default function LibraryPreviewModal({previewVideo, onHide, switchToVideoView, onVideoUpdated, onVideoDelete}) {
     const videoId = previewVideo?.id || previewVideo;
     return (
-        <VideoProvider videoId={videoId}>
+        <VideoProvider
+            mode={'general'}
+            videoId={videoId}
+            onVideoUpdated={onVideoUpdated}
+            onVideoDelete={onVideoDelete}
+            onCloseModal={onHide}>
             <VideoPreviewModal
                 onHide={onHide}
                 switchToVideoView={switchToVideoView}

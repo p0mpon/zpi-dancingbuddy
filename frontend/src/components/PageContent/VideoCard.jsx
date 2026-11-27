@@ -1,10 +1,48 @@
-import {Badge, Card} from "react-bootstrap";
-import React from "react";
-import {Film} from "react-bootstrap-icons";
+import {Badge, Button, Card} from "react-bootstrap";
+import React, {useState} from "react";
+import {Film, Heart, HeartFill} from "react-bootstrap-icons";
 import UserAvatar from "./UserAvatar";
+import {LikeVideo, UnlikeVideo} from "../../api/calls";
 
-export default function VideoCard({mode, video, showPreview}) {
+export default function VideoCard({mode, video, showPreview, onVideoUpdated}) {
+    const [isLiking, setIsLiking] = useState(false);
     if (!video) return null;
+    const isLiked = Boolean(video.liked_by_me);
+
+    const handleLikeClick = async (e) => {
+        e.stopPropagation();
+        if (isLiking) return;
+
+        setIsLiking(true);
+        try {
+            const nextLiked = !isLiked;
+            const response = nextLiked
+                ? await LikeVideo(video.id)
+                : await UnlikeVideo(video.id);
+
+            const currentCount = typeof video.likes_count === "number" ? video.likes_count : 0;
+            const nextCount =
+                typeof response?.likes_count === "number"
+                    ? response.likes_count
+                    : Math.max(0, currentCount + (nextLiked ? 1 : -1));
+
+            const updatedVideo = {
+                ...video,
+                ...(typeof response === "object" && response !== null ? response : {}),
+                liked_by_me:
+                    typeof response?.liked_by_me === "boolean"
+                        ? response.liked_by_me
+                        : nextLiked,
+                likes_count: nextCount,
+            };
+
+            onVideoUpdated?.(updatedVideo);
+        } catch (err) {
+            console.error("Failed to toggle like:", err);
+        } finally {
+            setIsLiking(false);
+        }
+    };
 
     return (
         <Card
@@ -72,6 +110,25 @@ export default function VideoCard({mode, video, showPreview}) {
                                 className="text-white">{video.analysis_status}</strong></span>
                         )}
                     </div>
+                    {mode === 'general' && (
+                        <Button
+                            type="button"
+                            variant="link"
+                            onClick={handleLikeClick}
+                            disabled={isLiking}
+                            aria-label={isLiked ? "Unlike video" : "Like video"}
+                            className="p-0 text-decoration-none d-inline-flex align-items-center gap-1 text-light"
+                        >
+                            {isLiked ? (
+                                <HeartFill size={18} className="text-danger"/>
+                            ) : (
+                                <Heart size={18} className="text-secondary"/>
+                            )}
+                            {typeof video.likes_count === "number" && (
+                                <span className="text-secondary small">{video.likes_count}</span>
+                            )}
+                        </Button>
+                    )}
                 </div>
             </Card.Body>
         </Card>

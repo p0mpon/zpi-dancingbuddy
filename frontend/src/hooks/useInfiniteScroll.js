@@ -12,7 +12,9 @@ export default function useInfiniteScroll(loadMoreAction, hasMore) {
             if (entries[0].isIntersecting && hasMore) {
                 setIsLoadingMore(true);
 
-                Promise.resolve(loadMoreAction()).finally(() => {
+                Promise.resolve(loadMoreAction())
+                    .catch(() => {})
+                    .finally(() => {
                     setIsLoadingMore(false);
                 });
             }

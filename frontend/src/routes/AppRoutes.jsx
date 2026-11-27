@@ -2,7 +2,6 @@ import {Routes, Route} from 'react-router-dom';
 
 import AuthLayout from '../layouts/AuthLayout';
 
-import VideoList from "../pages/VideoList";
 import UserDashboard from "../pages/UserDashboard";
 import {LoginPage} from "../pages/Auth/LoginPage";
 import RegisterPage from "../pages/Auth/RegisterPage";
@@ -11,14 +10,15 @@ import LoginRequiredRoute from "./LoginRequiredRoute";
 import {Logout} from "../pages/Auth/Logout";
 import Practice from "../pages/Practice";
 import LearningLayout from "../layouts/LearningLayout";
+import VideoListPage from "../pages/VideoListPage";
 
 export default function AppRoutes() {
     return (
         <Routes>
             <Route element={<MainLayout showSearch={true}/>}>
-                <Route path="/" element={<VideoList mode="general"/>}/>
+                <Route path="/" element={<VideoListPage mode="general"/>}/>
                 <Route element={<LoginRequiredRoute/>}>
-                    <Route path="/my-videos" element={<VideoList mode="user_specific"/>}/>
+                    <Route path="/my-videos" element={<VideoListPage mode="user_specific"/>}/>
                 </Route>
             </Route>
 

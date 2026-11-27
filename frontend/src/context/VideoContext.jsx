@@ -1,14 +1,18 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getFullVideo, getDanceAttemptsForVideo } from "../api/calls";
+import { getDanceAttemptsForVideo } from "../api/calls";
+import {VIDEO_FETCH_CONFIGS} from "../config/video_fetch_config";
 
 const VideoContext = createContext(null);
 
-export const VideoProvider = ({ videoId, children }) => {
+export const VideoProvider = ({ mode, videoId, onVideoUpdated, onVideoDelete, onCloseModal, children }) => {
     const [currentVideo, setCurrentVideo] = useState(null);
 
     const [attempts, setAttempts] = useState([]);
     const [nextAttemptsUrl, setNextAttemptsUrl] = useState(null);
     const [loadingAttempts, setLoadingAttempts] = useState(true);
+    
+    const config = VIDEO_FETCH_CONFIGS[mode] || VIDEO_FETCH_CONFIGS.general;
+    const {getVideoDetails, getFullVideo} = config;
 
     useEffect(() => {
         if (!videoId) return;
@@ -46,11 +50,12 @@ export const VideoProvider = ({ videoId, children }) => {
         try {
             const video = await getFullVideo(idToFetch);
             setCurrentVideo(video);
+            onVideoUpdated?.(video);
             return video;
         } catch (err) {
             console.error("Failed to fetch video:", err);
         }
-    }, [currentVideo?.id]);
+    }, [currentVideo?.id, getFullVideo, onVideoUpdated]);
 
     const fetchNextAttemptsPage = useCallback(() => {
         if (!nextAttemptsUrl || !videoId) return Promise.resolve();
@@ -63,10 +68,30 @@ export const VideoProvider = ({ videoId, children }) => {
             .catch(console.error);
     }, [videoId, nextAttemptsUrl]);
 
+    const updateVideoState = useCallback((updaterOrVideo) => {
+        setCurrentVideo((prev) => {
+            const next = typeof updaterOrVideo === "function"
+                ? updaterOrVideo(prev)
+                : updaterOrVideo;
+            if (next) onVideoUpdated?.(next);
+            return next;
+        });
+    }, [onVideoUpdated]);
+
+    const notifyVideoDeleted = useCallback((deletedId) => {
+        const idToRemove = deletedId ?? currentVideo?.id;
+        if (!idToRemove) return;
+        setCurrentVideo(null);
+        onVideoDelete?.(idToRemove);
+    }, [currentVideo?.id, onVideoDelete]);
+
     return (
         <VideoContext.Provider value={{
             currentVideo,
             setCurrentVideo,
+            updateVideoState,
+            notifyVideoDeleted,
+            onCloseModal,
             attempts,
             loadingAttempts,
             hasMoreAttempts: !!nextAttemptsUrl,

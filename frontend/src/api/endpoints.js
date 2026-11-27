@@ -22,8 +22,8 @@ export const API_ENDPOINTS = {
     // general videos
     "videos": "library/",                  // GET
     "liked_videos": "library/liked/",
-    "like_video": "library/{video_id}/like/",           // PUT, DELETE
-    "video_details": (id) => `videos/${id}/`,   // GET
+    "like_video": (video_id) => `library/${video_id}/like/`,           // PUT, DELETE
+    "video_details": (id) => `library/${id}/`,   // GET
     "video_analysis": (id) => `videos/${id}/analysis/`,     // GET
     "video_stream": (id) => `videos/${id}/stream/`,     // GET
     "video_thumbnail": (id) => `videos/${id}/thumbnail/`,

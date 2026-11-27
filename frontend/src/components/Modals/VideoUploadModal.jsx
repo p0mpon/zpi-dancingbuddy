@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Modal, Form, Button, Spinner, Alert, Col} from 'react-bootstrap';
 import {CheckCircleFill, Upload} from 'react-bootstrap-icons';
 import {uploadNewVideo} from "../../api/calls";
-import {DIFFICULTY_OPTIONS} from "../../config/difficulty";
+import {DIFFICULTY_OPTIONS} from "../../config/filters";
 
 export function VideoUploadModal({ show, onClose }) {
     const [uploadForm, setUploadForm] = useState({

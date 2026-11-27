@@ -7,12 +7,12 @@ export const VIDEO_LIST_CONFIGS = {
         title: "Browse Videos",
         fetchFunction: getAllVideos,
         VideoModal: LibraryPreviewModal,
-        filters: ['search', 'difficulty'],
+        filters: ['difficulty'],
     },
     user_specific: {
         title: "My Videos",
         fetchFunction: getMyVideos,
         VideoModal: MyPreviewModal,
-        filters: ['search', 'difficulty', 'analysis_status', 'visibility'],
+        filters: ['difficulty', 'analysis_status', 'visibility'],
     }
 };
